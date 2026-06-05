@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.api import generate, tasks
+from app.api import generate, generate_image, tasks
 from app.deps import get_settings
 
 
@@ -15,6 +15,7 @@ def create_app() -> FastAPI:
 
     app.include_router(generate.router)
     app.include_router(tasks.router)
+    app.include_router(generate_image.router)
 
     app.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
     app.mount("/outputs", StaticFiles(directory=settings.outputs_dir), name="outputs")
