@@ -3,73 +3,66 @@ import {
   Button,
   Card,
   ConfigProvider,
-  Image,
-  Input,
   Result,
   Spin,
   Tag,
   Typography,
+  Input,
   Upload,
   message,
 } from "antd";
-import { VideoCameraOutlined } from "@ant-design/icons";
-import type { UploadFile } from "antd";
+import {
+  CheckCircleFilled,
+  CloseOutlined,
+  PlusOutlined,
+  VideoCameraOutlined,
+} from "@ant-design/icons";
 import zhCN from "antd/locale/zh_CN";
 import { fetchTask, submitGenerate, type TaskState } from "./api";
 
 const { Title, Paragraph, Text } = Typography;
 
-interface FieldDef {
-  name: string;
+interface Category {
+  key: string;
   label: string;
   icon: string;
+  backendField: string;
   required?: boolean;
+  step: number;
 }
 
-const PRIMARY: FieldDef[] = [
-  { name: "person", label: "人物照片", icon: "🧍", required: true },
-  { name: "scene", label: "场景照片", icon: "🏙️", required: true },
+const CATEGORIES: Category[] = [
+  { key: "person", label: "人物", icon: "🧍", backendField: "person", required: true, step: 1 },
+  { key: "clothing", label: "衣服", icon: "👗", backendField: "top", step: 2 },
+  { key: "accessory", label: "配饰", icon: "👜", backendField: "accessory", step: 2 },
+  { key: "scene", label: "场景", icon: "🏙️", backendField: "scene", required: true, step: 3 },
 ];
 
-const ITEMS: FieldDef[] = [
-  { name: "top", label: "上衣", icon: "👕" },
-  { name: "bottom", label: "裤子", icon: "👖" },
-  { name: "shoes", label: "鞋子", icon: "👟" },
-  { name: "jewelry", label: "首饰", icon: "💍" },
-  { name: "accessory", label: "配饰", icon: "👜" },
-];
+interface Asset {
+  id: string;
+  url: string;
+  file: File;
+}
 
-const ALL_FIELDS = [...PRIMARY, ...ITEMS];
-
-const STATUS_META: Record<
-  TaskState["status"],
-  { color: string; text: string }
-> = {
+const STATUS_META: Record<TaskState["status"], { color: string; text: string }> = {
   pending: { color: "default", text: "排队中" },
   running: { color: "processing", text: "生成中" },
   succeeded: { color: "success", text: "已完成" },
   failed: { color: "error", text: "失败" },
 };
 
-function getBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (err) => reject(err);
-  });
-}
+let assetSeq = 0;
 
 export default function App() {
-  const [fileLists, setFileLists] = useState<Record<string, UploadFile[]>>({});
+  // 各分类的素材库
+  const [library, setLibrary] = useState<Record<string, Asset[]>>({});
+  // 各分类当前选中的素材 id
+  const [selection, setSelection] = useState<Record<string, string | null>>({});
   const [customPrompt, setCustomPrompt] = useState("");
   const [task, setTask] = useState<TaskState | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [previewImage, setPreviewImage] = useState("");
-  const [previewOpen, setPreviewOpen] = useState(false);
   const timer = useRef<number | null>(null);
 
-  // 轮询任务状态
   useEffect(() => {
     if (!task || task.status === "succeeded" || task.status === "failed") return;
     timer.current = window.setInterval(async () => {
@@ -84,65 +77,46 @@ export default function App() {
     };
   }, [task?.id, task?.status]);
 
-  const handlePreview = async (file: UploadFile) => {
-    let url = file.url || (file.preview as string | undefined);
-    if (!url && file.originFileObj) {
-      url = await getBase64(file.originFileObj as File);
-      file.preview = url;
-    }
-    setPreviewImage(url || "");
-    setPreviewOpen(true);
-  };
+  function addAsset(catKey: string, file: File) {
+    const asset: Asset = {
+      id: `a${assetSeq++}`,
+      url: URL.createObjectURL(file),
+      file,
+    };
+    setLibrary((prev) => ({ ...prev, [catKey]: [...(prev[catKey] || []), asset] }));
+    // 首次上传自动选中
+    setSelection((prev) => (prev[catKey] ? prev : { ...prev, [catKey]: asset.id }));
+  }
 
-  const renderUpload = (f: FieldDef) => {
-    const list = fileLists[f.name] || [];
-    const filled = list.length >= 1;
-    return (
-      <div className="upload-field" key={f.name}>
-        <Upload
-          listType="picture-card"
-          accept="image/*"
-          maxCount={1}
-          fileList={list}
-          beforeUpload={() => false}
-          onChange={({ fileList }) =>
-            setFileLists((prev) => ({ ...prev, [f.name]: fileList }))
-          }
-          onPreview={handlePreview}
-        >
-          {filled ? null : (
-            <div className="upload-trigger">
-              <div className="upload-icon">{f.icon}</div>
-              <div className="upload-label">
-                {f.label}
-                {f.required && <span className="req">*</span>}
-              </div>
-              <div className="upload-hint">点击上传</div>
-            </div>
-          )}
-        </Upload>
-        {filled && (
-          <div className="upload-caption">
-            {f.icon} {f.label}
-          </div>
-        )}
-      </div>
+  function removeAsset(catKey: string, assetId: string) {
+    setLibrary((prev) => {
+      const list = prev[catKey] || [];
+      const target = list.find((a) => a.id === assetId);
+      if (target) URL.revokeObjectURL(target.url);
+      return { ...prev, [catKey]: list.filter((a) => a.id !== assetId) };
+    });
+    setSelection((prev) =>
+      prev[catKey] === assetId ? { ...prev, [catKey]: null } : prev
     );
-  };
+  }
+
+  function selectedAsset(catKey: string): Asset | undefined {
+    const id = selection[catKey];
+    if (!id) return undefined;
+    return (library[catKey] || []).find((a) => a.id === id);
+  }
 
   async function onSubmit() {
-    const person = fileLists["person"]?.[0]?.originFileObj;
-    const scene = fileLists["scene"]?.[0]?.originFileObj;
-    if (!person || !scene) {
-      message.warning("请至少上传「人物照片」和「场景照片」");
+    if (!selectedAsset("person") || !selectedAsset("scene")) {
+      message.warning("请先上传并选择「人物」和「场景」");
       return;
     }
     setSubmitting(true);
     try {
       const form = new FormData();
-      for (const f of ALL_FIELDS) {
-        const file = fileLists[f.name]?.[0]?.originFileObj as File | undefined;
-        if (file) form.append(f.name, file);
+      for (const cat of CATEGORIES) {
+        const asset = selectedAsset(cat.key);
+        if (asset) form.append(cat.backendField, asset.file);
       }
       if (customPrompt.trim()) form.append("custom_prompt", customPrompt.trim());
       const id = await submitGenerate(form);
@@ -169,31 +143,106 @@ export default function App() {
             👗 AI 虚拟换装视频
           </Title>
           <Paragraph style={{ color: "rgba(255,255,255,0.85)", marginTop: 8 }}>
-            上传人物与场景，挑选要换的单品，一键生成「换装后在该场景走动」的视频
+            每类可上传多张素材，挑选组成一身搭配，生成「换装后在场景中走动」的视频
           </Paragraph>
         </header>
 
         <main className="content">
-          <Card
-            className="section-card"
-            title={<span className="section-title">① 上传人物与场景（必填）</span>}
-          >
-            <div className="uploads primary-uploads">
-              {PRIMARY.map(renderUpload)}
+          {/* 当前搭配预览 */}
+          <Card className="section-card summary-card" title={<span className="section-title">🎬 当前搭配</span>}>
+            <div className="summary-row">
+              {CATEGORIES.map((cat) => {
+                const asset = selectedAsset(cat.key);
+                return (
+                  <div className="summary-slot" key={cat.key}>
+                    <div className={`summary-thumb ${asset ? "filled" : ""}`}>
+                      {asset ? (
+                        <img src={asset.url} alt={cat.label} />
+                      ) : (
+                        <span className="summary-placeholder">{cat.icon}</span>
+                      )}
+                    </div>
+                    <div className="summary-label">
+                      {cat.label}
+                      {cat.required && <span className="req">*</span>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </Card>
 
-          <Card
-            className="section-card"
-            title={<span className="section-title">② 选择要换的单品（可选）</span>}
-          >
-            <div className="uploads item-uploads">{ITEMS.map(renderUpload)}</div>
-          </Card>
+          {/* 各分类素材库 */}
+          {CATEGORIES.map((cat) => {
+            const list = library[cat.key] || [];
+            return (
+              <Card
+                key={cat.key}
+                className="section-card"
+                title={
+                  <span className="section-title">
+                    {cat.icon} {cat.label}
+                    {cat.required && <span className="req">*</span>}
+                    {list.length > 0 && (
+                      <Text type="secondary" style={{ fontWeight: 400, marginLeft: 8 }}>
+                        已上传 {list.length} 张，点选其一
+                      </Text>
+                    )}
+                  </span>
+                }
+              >
+                <div className="gallery">
+                  {list.map((asset) => {
+                    const active = selection[cat.key] === asset.id;
+                    return (
+                      <div
+                        key={asset.id}
+                        className={`asset-card ${active ? "active" : ""}`}
+                        onClick={() =>
+                          setSelection((prev) => ({ ...prev, [cat.key]: asset.id }))
+                        }
+                      >
+                        <img src={asset.url} alt={cat.label} />
+                        {active && (
+                          <span className="asset-check">
+                            <CheckCircleFilled />
+                          </span>
+                        )}
+                        <button
+                          className="asset-del"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeAsset(cat.key, asset.id);
+                          }}
+                          title="删除"
+                        >
+                          <CloseOutlined />
+                        </button>
+                      </div>
+                    );
+                  })}
 
-          <Card
-            className="section-card"
-            title={<span className="section-title">③ 额外描述（可选）</span>}
-          >
+                  <Upload
+                    multiple
+                    accept="image/*"
+                    showUploadList={false}
+                    beforeUpload={(file) => {
+                      addAsset(cat.key, file);
+                      return false;
+                    }}
+                  >
+                    <div className="add-tile">
+                      <PlusOutlined />
+                      <span>上传</span>
+                    </div>
+                  </Upload>
+                </div>
+              </Card>
+            );
+          })}
+
+          {/* 额外描述 */}
+          <Card className="section-card" title={<span className="section-title">✏️ 额外描述（可选）</span>}>
             <Input.TextArea
               value={customPrompt}
               onChange={(e) => setCustomPrompt(e.target.value)}
@@ -237,11 +286,7 @@ export default function App() {
                 </div>
               )}
               {task.status === "failed" && (
-                <Result
-                  status="error"
-                  title="生成失败"
-                  subTitle={task.error || "请稍后重试"}
-                />
+                <Result status="error" title="生成失败" subTitle={task.error || "请稍后重试"} />
               )}
               {task.status === "succeeded" && task.video_url && (
                 <div className="video-wrap">
@@ -263,18 +308,6 @@ export default function App() {
             </Card>
           )}
         </main>
-
-        {previewImage && (
-          <Image
-            wrapperStyle={{ display: "none" }}
-            preview={{
-              visible: previewOpen,
-              onVisibleChange: (v) => setPreviewOpen(v),
-              afterOpenChange: (v) => !v && setPreviewImage(""),
-            }}
-            src={previewImage}
-          />
-        )}
       </div>
     </ConfigProvider>
   );

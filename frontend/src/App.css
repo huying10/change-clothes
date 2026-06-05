@@ -20,7 +20,6 @@ body {
   text-align: center;
 }
 
-/* 内容区 */
 .content {
   max-width: 880px;
   margin: -32px auto 48px;
@@ -38,75 +37,155 @@ body {
   font-weight: 600;
 }
 
-/* 上传区布局 */
-.uploads {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.upload-field {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.upload-caption {
-  margin-top: 6px;
-  font-size: 13px;
-  color: #555;
-}
-
-/* 上传触发区（未上传时） */
-.upload-trigger {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-
-.upload-icon {
-  font-size: 28px;
-  line-height: 1;
-}
-
-.upload-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #333;
-}
-
-.upload-label .req {
+.req {
   color: #ff4d4f;
   margin-left: 2px;
 }
 
-.upload-hint {
-  font-size: 12px;
-  color: #999;
+/* ===== 当前搭配预览 ===== */
+.summary-card {
+  position: sticky;
+  top: 12px;
+  z-index: 10;
 }
 
-/* 人物/场景：较大的竖向卡片 */
-.primary-uploads :where(.ant-upload-list-item-container),
-.primary-uploads :where(.ant-upload.ant-upload-select) {
-  width: 168px !important;
-  height: 210px !important;
+.summary-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
-/* 单品：稍小的方形卡片 */
-.item-uploads :where(.ant-upload-list-item-container),
-.item-uploads :where(.ant-upload.ant-upload-select) {
-  width: 132px !important;
-  height: 150px !important;
+.summary-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
 
-/* 缩略图铺满、裁剪填充 */
-.uploads :where(.ant-upload-list-item) {
-  padding: 0 !important;
+.summary-thumb {
+  width: 84px;
+  height: 100px;
+  border-radius: 10px;
+  border: 2px dashed #d9d9d9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #fafafa;
 }
-.uploads :where(.ant-upload-list-item-thumbnail) img {
-  object-fit: cover !important;
+
+.summary-thumb.filled {
+  border-style: solid;
+  border-color: #7c3aed;
+}
+
+.summary-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.summary-placeholder {
+  font-size: 30px;
+  opacity: 0.4;
+}
+
+.summary-label {
+  font-size: 13px;
+  color: #555;
+}
+
+/* ===== 素材库画廊 ===== */
+.gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.asset-card {
+  position: relative;
+  width: 120px;
+  height: 150px;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+  background: #f5f5f5;
+}
+
+.asset-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.asset-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.asset-card.active {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
+}
+
+.asset-check {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  color: #7c3aed;
+  font-size: 22px;
+  background: #fff;
+  border-radius: 50%;
+  line-height: 0;
+}
+
+.asset-del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.asset-card:hover .asset-del {
+  opacity: 1;
+}
+
+/* 上传瓦片 */
+.add-tile {
+  width: 120px;
+  height: 150px;
+  border-radius: 10px;
+  border: 2px dashed #d9d9d9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #888;
+  font-size: 14px;
+  cursor: pointer;
+  background: #fafafa;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.add-tile:hover {
+  border-color: #7c3aed;
+  color: #7c3aed;
 }
 
 /* 提交按钮 */
@@ -135,14 +214,13 @@ body {
 }
 
 @media (max-width: 600px) {
-  .primary-uploads :where(.ant-upload-list-item-container),
-  .primary-uploads :where(.ant-upload.ant-upload-select) {
-    width: 140px !important;
-    height: 180px !important;
+  .asset-card,
+  .add-tile {
+    width: 100px;
+    height: 128px;
   }
-  .item-uploads :where(.ant-upload-list-item-container),
-  .item-uploads :where(.ant-upload.ant-upload-select) {
-    width: 104px !important;
-    height: 120px !important;
+  .summary-thumb {
+    width: 68px;
+    height: 84px;
   }
 }
