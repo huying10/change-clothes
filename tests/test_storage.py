@@ -16,3 +16,12 @@ def test_save_output_and_public_url(tmp_path):
     assert path.exists()
     url = storage.output_public_url(path)
     assert url == "/outputs/task1.mp4"
+
+
+def test_save_output_image(tmp_path):
+    from app.core.storage import LocalStorage
+    storage = LocalStorage(uploads_dir=tmp_path / "up", outputs_dir=tmp_path / "out")
+    path = storage.save_output_image("task1", b"imgbytes")
+    assert path.exists()
+    assert path.name == "task1.jpg"
+    assert storage.output_public_url(path) == "/outputs/task1.jpg"

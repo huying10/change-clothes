@@ -10,6 +10,9 @@ class Storage(ABC):
     def save_output(self, task_id: str, data: bytes) -> Path: ...
 
     @abstractmethod
+    def save_output_image(self, task_id: str, data: bytes) -> Path: ...
+
+    @abstractmethod
     def output_public_url(self, path: Path) -> str: ...
 
 
@@ -30,6 +33,11 @@ class LocalStorage(Storage):
 
     def save_output(self, task_id: str, data: bytes) -> Path:
         path = self.outputs_dir / f"{task_id}.mp4"
+        path.write_bytes(data)
+        return path
+
+    def save_output_image(self, task_id: str, data: bytes) -> Path:
+        path = self.outputs_dir / f"{task_id}.jpg"
         path.write_bytes(data)
         return path
 
