@@ -28,3 +28,17 @@ def build_prompt(present_fields: list[str], custom: str | None = None) -> str:
     if custom:
         prompt += f" {custom.strip()}"
     return prompt
+
+
+def build_image_prompt(present_fields: list[str], custom: str | None = None) -> str:
+    """换装静图提示词：让人物穿上所选服饰，严格保持人物身份不变。"""
+    items = [ITEM_LABELS[f] for f in present_fields if f in ITEM_LABELS]
+    wearing = "、".join(items) if items else "参考图中的服饰"
+    prompt = (
+        f"让参考图中的人物穿上所提供的{wearing}，"
+        "严格保持人物的面部五官、发型、肤色和体型与参考图完全一致，仅更换服饰；"
+        "全身写实人像，服饰自然贴合身体，光线真实，高清。"
+    )
+    if custom:
+        prompt += f" {custom.strip()}"
+    return prompt

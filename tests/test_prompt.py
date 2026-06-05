@@ -17,3 +17,17 @@ def test_prompt_appends_custom_text():
 def test_prompt_ignores_unknown_field():
     prompt = build_prompt(present_fields=["top", "weird"])
     assert "上衣" in prompt
+
+
+def test_image_prompt_keeps_identity_and_lists_items():
+    from app.core.prompt import build_image_prompt
+    p = build_image_prompt(["top", "accessory"])
+    assert "上衣" in p
+    assert "配饰" in p
+    assert "保持" in p and "面部" in p  # 强调身份不变
+
+
+def test_image_prompt_appends_custom():
+    from app.core.prompt import build_image_prompt
+    p = build_image_prompt(["top"], custom="阳光午后")
+    assert "阳光午后" in p
