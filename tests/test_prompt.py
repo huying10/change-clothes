@@ -31,3 +31,13 @@ def test_image_prompt_appends_custom():
     from app.core.prompt import build_image_prompt
     p = build_image_prompt(["top"], custom="阳光午后")
     assert "阳光午后" in p
+
+
+def test_video_prompt_fixed_text_and_custom():
+    from app.core.prompt import build_video_prompt
+    p = build_video_prompt()
+    assert "转身" in p
+    assert "向前走动" in p
+    assert "9:16" in p
+    p2 = build_video_prompt(custom="夜晚霓虹")
+    assert p2.endswith("夜晚霓虹")

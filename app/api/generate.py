@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.config import Settings
-from app.core.prompt import build_image_prompt, build_prompt
+from app.core.prompt import build_image_prompt, build_video_prompt
 from app.core.storage import Storage
 from app.core.task_manager import TaskManager
 from app.deps import (
@@ -78,7 +78,7 @@ async def generate(
     # ② Seedance 仅 2 张参考图：[换装图(或原始人物), 场景]
     person_ref = tryon_path or person_path
     video_refs = [person_ref, scene_path]
-    video_prompt = build_prompt([], custom=custom_prompt)  # 人物已换装，仅需在场景中行走
+    video_prompt = build_video_prompt(custom=custom_prompt)  # 人物已换装，仅需在场景中行走
 
     try:
         external_id = video_provider.submit(video_refs, video_prompt, options)
