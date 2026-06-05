@@ -82,10 +82,6 @@ export default function App() {
   const timer = useRef<number | null>(null);
 
   useEffect(() => {
-    if (task?.status === "succeeded") setResultView("video");
-  }, [task?.status]);
-
-  useEffect(() => {
     if (!task || task.status === "succeeded" || task.status === "failed") return;
     timer.current = window.setInterval(async () => {
       try {
