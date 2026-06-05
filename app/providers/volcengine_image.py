@@ -33,6 +33,7 @@ class VolcengineImageProvider(ImageGenProvider):
             "image": images,
             "size": self._size,
             "response_format": "url",
+            "stream": False,
             "watermark": False,
             "sequential_image_generation": "disabled",
         }
@@ -43,6 +44,6 @@ class VolcengineImageProvider(ImageGenProvider):
         )
         resp.raise_for_status()
         url = resp.json()["data"][0]["url"]
-        img = self._client.get(url, headers={"Authorization": self._auth})
+        img = self._client.get(url)  # TOS 公网签名链接，无需鉴权
         img.raise_for_status()
         return img.content
