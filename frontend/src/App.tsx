@@ -24,6 +24,7 @@ import {
 } from "@ant-design/icons";
 import zhCN from "antd/locale/zh_CN";
 import { fetchTask, submitGenerate, type TaskState } from "./api";
+import { buildCollage } from "./collage";
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -69,6 +70,7 @@ export default function App() {
   const [page, setPage] = useState<Record<string, number>>({});
   const [customPrompt, setCustomPrompt] = useState("");
   const [task, setTask] = useState<TaskState | null>(null);
+  const [collageUrl, setCollageUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const timer = useRef<number | null>(null);
 
@@ -128,6 +130,19 @@ export default function App() {
     }
     setSubmitting(true);
     try {
+      // 先用 Canvas 秒出搭配预览卡，作为视频生成期间的缓冲
+      try {
+        const collage = await buildCollage({
+          person: selectedAsset("person")?.url,
+          scene: selectedAsset("scene")?.url,
+          clothing: selectedAsset("clothing")?.url,
+          accessory: selectedAsset("accessory")?.url,
+        });
+        setCollageUrl(collage);
+      } catch {
+        setCollageUrl(null);
+      }
+
       const form = new FormData();
       for (const cat of CATEGORIES) {
         const asset = selectedAsset(cat.key);
@@ -350,10 +365,15 @@ export default function App() {
                 >
                   {isGenerating && (
                     <div className="generating">
-                      <Spin size="large" />
-                      <Paragraph type="secondary" style={{ marginTop: 16 }}>
-                        正在生成换装视频，每 3 秒自动刷新…
-                      </Paragraph>
+                      {collageUrl && (
+                        <img src={collageUrl} alt="搭配预览" className="collage-preview" />
+                      )}
+                      <div className="generating-tip">
+                        <Spin />
+                        <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
+                          已先生成「搭配预览卡」，真实换装视频生成中，每 3 秒自动刷新…
+                        </Paragraph>
+                      </div>
                     </div>
                   )}
                   {task.status === "failed" && (

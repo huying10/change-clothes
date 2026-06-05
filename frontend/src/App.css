@@ -217,7 +217,18 @@ body {
 /* 结果区 */
 .generating {
   text-align: center;
-  padding: 32px 0;
+  padding: 16px 0;
+}
+
+.collage-preview {
+  width: 100%;
+  max-width: 300px;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+.generating-tip {
+  margin-top: 16px;
 }
 
 .video-wrap {
