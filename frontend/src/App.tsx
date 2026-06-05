@@ -10,6 +10,7 @@ import {
   Space,
   Spin,
   Steps,
+  Tabs,
   Tag,
   Typography,
   Upload,
@@ -29,23 +30,25 @@ import { buildCollage } from "./collage";
 
 const { Title, Paragraph, Text } = Typography;
 
-interface Category {
-  key: string;
+interface SubCat {
+  key: string; // 同时作为后端字段名
   label: string;
   icon: string;
-  backendField: string;
   required?: boolean;
-  hint: string;
 }
 
-const CATEGORIES: Category[] = [
-  { key: "person", label: "人物", icon: "🧍", backendField: "person", required: true, hint: "上传人物照片，选择本次要换装的人" },
-  { key: "clothing", label: "衣服", icon: "👗", backendField: "top", hint: "上传想试的衣服（可不选）" },
-  { key: "accessory", label: "配饰", icon: "👜", backendField: "accessory", hint: "上传想搭配的配饰（可不选）" },
-  { key: "scene", label: "场景", icon: "🏙️", backendField: "scene", required: true, hint: "上传场景照片，人物将在此场景中走动" },
+const PERSON: SubCat = { key: "person", label: "人物", icon: "🧍", required: true };
+const SCENE: SubCat = { key: "scene", label: "场景", icon: "🏙️", required: true };
+const OUTFIT: SubCat[] = [
+  { key: "top", label: "上衣", icon: "👕" },
+  { key: "bottom", label: "下裤", icon: "👖" },
+  { key: "shoes", label: "鞋子", icon: "👟" },
+  { key: "jewelry", label: "首饰", icon: "💍" },
+  { key: "accessory", label: "配饰", icon: "👜" },
 ];
+const ALL_CATS: SubCat[] = [PERSON, ...OUTFIT, SCENE];
 
-const GENERATE_STEP = CATEGORIES.length; // 最后一步：确认并生成
+const GENERATE_STEP = 3; // 0人物 1服饰 2场景 3生成
 
 interface Asset {
   id: string;
@@ -78,7 +81,6 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const timer = useRef<number | null>(null);
 
-  // 视频生成完成后自动切到视频视图（图片仍可手动切回）
   useEffect(() => {
     if (task?.status === "succeeded") setResultView("video");
   }, [task?.status]);
@@ -124,9 +126,12 @@ export default function App() {
   }
 
   function goNext() {
-    const cat = CATEGORIES[current];
-    if (cat?.required && !selectedAsset(cat.key)) {
-      message.warning(`请先上传并选择「${cat.label}」`);
+    if (current === 0 && !selectedAsset("person")) {
+      message.warning("请先上传并选择「人物」");
+      return;
+    }
+    if (current === 2 && !selectedAsset("scene")) {
+      message.warning("请先上传并选择「场景」");
       return;
     }
     setCurrent((s) => Math.min(s + 1, GENERATE_STEP));
@@ -141,12 +146,12 @@ export default function App() {
     setRealImageUrl(null);
     setResultView("image");
     try {
-      // ① 先用 Canvas 秒出搭配预览卡，作为缓冲
+      // ① Canvas 秒出搭配预览卡（缓冲）
       try {
-        const items = [
-          selectedAsset("clothing") && { url: selectedAsset("clothing")!.url, label: "衣服" },
-          selectedAsset("accessory") && { url: selectedAsset("accessory")!.url, label: "配饰" },
-        ].filter(Boolean) as { url: string; label: string }[];
+        const items = OUTFIT.filter((c) => selectedAsset(c.key)).map((c) => ({
+          url: selectedAsset(c.key)!.url,
+          label: c.label,
+        }));
         const collage = await buildCollage({
           person: selectedAsset("person")?.url,
           scene: selectedAsset("scene")?.url,
@@ -158,20 +163,19 @@ export default function App() {
       }
 
       const form = new FormData();
-      for (const cat of CATEGORIES) {
+      for (const cat of ALL_CATS) {
         const asset = selectedAsset(cat.key);
-        if (asset) form.append(cat.backendField, asset.file);
+        if (asset) form.append(cat.key, asset.file);
       }
       if (customPrompt.trim()) form.append("custom_prompt", customPrompt.trim());
 
-      // ② 并行：图片换装（同步、较快）+ 视频（异步、较慢）
+      // ② 并行：图片换装（快）+ 视频（慢）
       setImageLoading(true);
       submitGenerateImage(form)
         .then((url) => setRealImageUrl(url))
         .catch((e) => message.error(`换装图：${e}`))
         .finally(() => setImageLoading(false));
 
-      // ③ 视频任务
       const id = await submitGenerate(form);
       setTask({ id, status: "pending", video_url: null, error: null });
       message.success("已提交，开始生成");
@@ -185,7 +189,7 @@ export default function App() {
   const videoReady = task?.status === "succeeded" && !!task.video_url;
 
   // 渲染某一类的素材库（上传 + 翻页画廊）
-  function renderGallery(cat: Category) {
+  function renderGallery(cat: SubCat) {
     const list = library[cat.key] || [];
     const pageCount = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
     const cur = Math.min(page[cat.key] || 1, pageCount);
@@ -259,9 +263,13 @@ export default function App() {
   }
 
   const stepItems = [
-    ...CATEGORIES.map((c) => ({ title: `${c.icon} ${c.label}` })),
+    { title: "🧍 人物" },
+    { title: "👗 服饰搭配" },
+    { title: "🏙️ 场景" },
     { title: "🎬 生成" },
   ];
+
+  const summaryCats = [PERSON, ...OUTFIT.filter((c) => selectedAsset(c.key)), SCENE];
 
   return (
     <ConfigProvider
@@ -274,36 +282,66 @@ export default function App() {
             👗 AI 虚拟换装视频
           </Title>
           <Paragraph style={{ color: "rgba(255,255,255,0.85)", marginTop: 8 }}>
-            按步骤上传并挑选素材，一步步搭配，最后生成换装视频
+            按步骤上传并挑选素材，一步步搭配，最后生成换装图片与视频
           </Paragraph>
         </header>
 
         <main className="content">
           <Card className="section-card">
-            <Steps
-              current={current}
-              items={stepItems}
-              onChange={(v) => setCurrent(v)}
-              responsive
-            />
+            <Steps current={current} items={stepItems} onChange={(v) => setCurrent(v)} responsive />
           </Card>
 
           {current < GENERATE_STEP ? (
             <>
-              <Card
-                className="section-card"
-                title={
-                  <span className="section-title">
-                    {CATEGORIES[current].icon} 第 {current + 1} 步 · {CATEGORIES[current].label}
-                    {CATEGORIES[current].required && <span className="req">*</span>}
-                  </span>
-                }
-              >
-                <Paragraph type="secondary" style={{ marginTop: -4 }}>
-                  {CATEGORIES[current].hint}
-                </Paragraph>
-                {renderGallery(CATEGORIES[current])}
-              </Card>
+              {current === 0 && (
+                <Card
+                  className="section-card"
+                  title={
+                    <span className="section-title">
+                      🧍 第 1 步 · 人物<span className="req">*</span>
+                    </span>
+                  }
+                >
+                  <Paragraph type="secondary" style={{ marginTop: -4 }}>
+                    上传人物照片，选择本次要换装的人
+                  </Paragraph>
+                  {renderGallery(PERSON)}
+                </Card>
+              )}
+
+              {current === 1 && (
+                <Card
+                  className="section-card"
+                  title={<span className="section-title">👗 第 2 步 · 服饰搭配（可选）</span>}
+                >
+                  <Paragraph type="secondary" style={{ marginTop: -4 }}>
+                    按分类上传并挑选想换的单品，都可不选
+                  </Paragraph>
+                  <Tabs
+                    items={OUTFIT.map((c) => ({
+                      key: c.key,
+                      label: `${c.icon} ${c.label}${selectedAsset(c.key) ? " ✓" : ""}`,
+                      children: renderGallery(c),
+                    }))}
+                  />
+                </Card>
+              )}
+
+              {current === 2 && (
+                <Card
+                  className="section-card"
+                  title={
+                    <span className="section-title">
+                      🏙️ 第 3 步 · 场景<span className="req">*</span>
+                    </span>
+                  }
+                >
+                  <Paragraph type="secondary" style={{ marginTop: -4 }}>
+                    上传场景照片，人物将在此场景中走动
+                  </Paragraph>
+                  {renderGallery(SCENE)}
+                </Card>
+              )}
 
               <div className="step-nav">
                 <Button
@@ -323,10 +361,10 @@ export default function App() {
             <>
               <Card
                 className="section-card"
-                title={<span className="section-title">🎬 确认搭配并生成</span>}
+                title={<span className="section-title">🎬 第 4 步 · 确认搭配并生成</span>}
               >
                 <div className="summary-row">
-                  {CATEGORIES.map((cat) => {
+                  {summaryCats.map((cat) => {
                     const asset = selectedAsset(cat.key);
                     return (
                       <div className="summary-slot" key={cat.key}>
@@ -346,9 +384,7 @@ export default function App() {
                   })}
                 </div>
 
-                <Paragraph style={{ marginTop: 20, marginBottom: 6 }}>
-                  额外描述（可选）
-                </Paragraph>
+                <Paragraph style={{ marginTop: 20, marginBottom: 6 }}>额外描述（可选）</Paragraph>
                 <Input.TextArea
                   value={customPrompt}
                   onChange={(e) => setCustomPrompt(e.target.value)}
@@ -369,7 +405,7 @@ export default function App() {
                     loading={submitting}
                     onClick={onSubmit}
                   >
-                    生成换装视频
+                    生成换装图片与视频
                   </Button>
                 </Space>
               </Card>
@@ -403,11 +439,7 @@ export default function App() {
                       {resultView === "image" && (
                         <div>
                           {realImageUrl || collageUrl ? (
-                            <img
-                              src={(realImageUrl || collageUrl)!}
-                              alt="换装图片"
-                              className="result-video"
-                            />
+                            <img src={(realImageUrl || collageUrl)!} alt="换装图片" className="result-video" />
                           ) : (
                             <Spin />
                           )}

@@ -143,19 +143,26 @@ export async function buildCollage(input: CollageInput): Promise<string> {
     drawPhoto(ctx, p, px + (items.length > 0 ? 0 : (W - 88 - pw) / 2), py, pw, ph, 26);
   }
 
-  // 单品（右侧竖排小卡 + 标签）
+  // 单品（右侧竖排小卡 + 标签，按数量自适应缩放）
   if (items.length > 0) {
-    const tile = 184;
-    const tileX = px + 430 + 30 + ((W - (px + 430 + 30) - 44 - tile) / 2);
-    let iy = py + 20;
-    const step = tile + 58;
+    const colTop = py;
+    const colBottom = H - 80;
+    const availH = colBottom - colTop;
+    const labelH = 38;
+    let tile = (availH - items.length * labelH) / items.length - 12;
+    tile = Math.max(72, Math.min(184, tile));
+    const step = tile + labelH + 10;
+    const colLeft = px + 430 + 24;
+    const colW = W - colLeft - 36;
+    const tileX = colLeft + (colW - tile) / 2;
+    let iy = colTop + (availH - (step * items.length - 10)) / 2;
     for (const it of items) {
       const im = await loadImg(it.url);
-      drawPhoto(ctx, im, tileX, iy, tile, tile, 18);
-      ctx.font = '600 22px system-ui, sans-serif';
+      drawPhoto(ctx, im, tileX, iy, tile, tile, 16);
+      ctx.font = '600 20px system-ui, sans-serif';
       ctx.fillStyle = "#fff";
       ctx.textAlign = "center";
-      ctx.fillText(it.label, tileX + tile / 2, iy + tile + 34);
+      ctx.fillText(it.label, tileX + tile / 2, iy + tile + 28);
       iy += step;
     }
   }
