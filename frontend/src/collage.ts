@@ -1,12 +1,16 @@
-// 用前端 Canvas 把所选素材拼成一张「搭配预览卡」。
+// 用前端 Canvas 把所选素材拼成一张精致的「造型卡 / lookbook」。
 // 纯代码、零成本、瞬间生成，用作视频生成期间的缓冲展示。
-// 注意：这不是真实换装效果，仅是所选搭配的一览。
+// 注意：这不是真实换装效果（人并未真的穿上衣服），而是所选搭配的时尚排版一览。
+
+export interface CollageItem {
+  url: string;
+  label: string;
+}
 
 export interface CollageInput {
   person?: string;
   scene?: string;
-  clothing?: string;
-  accessory?: string;
+  items?: CollageItem[];
 }
 
 function loadImg(url: string): Promise<HTMLImageElement> {
@@ -60,76 +64,107 @@ function roundRect(
   ctx.closePath();
 }
 
+// 带白边 + 投影的相片卡
+function drawPhoto(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.45)";
+  ctx.shadowBlur = 28;
+  ctx.shadowOffsetY = 12;
+  ctx.fillStyle = "#fff";
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  ctx.restore();
+
+  const pad = 6;
+  ctx.save();
+  roundRect(ctx, x + pad, y + pad, w - pad * 2, h - pad * 2, Math.max(2, r - 3));
+  ctx.clip();
+  drawCover(ctx, img, x + pad, y + pad, w - pad * 2, h - pad * 2);
+  ctx.restore();
+}
+
 export async function buildCollage(input: CollageInput): Promise<string> {
-  const W = 720;
-  const H = 960;
+  const W = 760;
+  const H = 1000;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
 
-  // 背景：场景图（暗化）或纯色
+  // 背景：场景图（虚化）或渐变纯色
   if (input.scene) {
     const s = await loadImg(input.scene);
-    drawCover(ctx, s, 0, 0, W, H);
+    ctx.save();
+    ctx.filter = "blur(28px) brightness(0.7)";
+    drawCover(ctx, s, -50, -50, W + 100, H + 100);
+    ctx.restore();
   } else {
-    ctx.fillStyle = "#2a2a35";
+    const bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, "#3b2f63");
+    bg.addColorStop(1, "#1f2440");
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
   }
-  ctx.fillStyle = "rgba(20,16,40,0.45)";
+
+  // 暗色渐变叠层，保证文字与主体清晰
+  const overlay = ctx.createLinearGradient(0, 0, 0, H);
+  overlay.addColorStop(0, "rgba(18,14,35,0.62)");
+  overlay.addColorStop(0.5, "rgba(18,14,35,0.40)");
+  overlay.addColorStop(1, "rgba(18,14,35,0.72)");
+  ctx.fillStyle = overlay;
   ctx.fillRect(0, 0, W, H);
 
   // 标题
-  ctx.fillStyle = "#fff";
   ctx.textAlign = "center";
-  ctx.font = "bold 40px system-ui, sans-serif";
-  ctx.fillText("✨ 搭配预览", W / 2, 72);
+  ctx.fillStyle = "#fff";
+  ctx.font = 'bold 46px system-ui, "PingFang SC", sans-serif';
+  ctx.fillText("✨ AI 换装造型", W / 2, 84);
+  ctx.font = '20px system-ui, sans-serif';
+  ctx.fillStyle = "rgba(255,255,255,0.78)";
+  ctx.fillText("S T Y L E   L O O K   ·   搭配预览", W / 2, 116);
 
-  // 人物主图
+  const items = input.items || [];
+
+  // 人物主图（左侧 hero）
+  const px = 44;
+  const py = 156;
+  const pw = items.length > 0 ? 430 : 520;
+  const ph = 600;
   if (input.person) {
     const p = await loadImg(input.person);
-    const pw = 420;
-    const ph = 560;
-    const px = (W - pw) / 2;
-    const py = 110;
-    ctx.save();
-    roundRect(ctx, px, py, pw, ph, 24);
-    ctx.clip();
-    drawCover(ctx, p, px, py, pw, ph);
-    ctx.restore();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = "rgba(255,255,255,0.9)";
-    roundRect(ctx, px, py, pw, ph, 24);
-    ctx.stroke();
+    drawPhoto(ctx, p, px + (items.length > 0 ? 0 : (W - 88 - pw) / 2), py, pw, ph, 26);
   }
 
-  // 单品缩略图（底部一排）
-  const items = [input.clothing, input.accessory].filter(Boolean) as string[];
+  // 单品（右侧竖排小卡 + 标签）
   if (items.length > 0) {
-    const tn = 120;
-    const gap = 28;
-    const totalW = items.length * tn + (items.length - 1) * gap;
-    let ix = (W - totalW) / 2;
-    const iy = H - tn - 70;
+    const tile = 184;
+    const tileX = px + 430 + 30 + ((W - (px + 430 + 30) - 44 - tile) / 2);
+    let iy = py + 20;
+    const step = tile + 58;
     for (const it of items) {
-      const im = await loadImg(it);
-      ctx.save();
-      roundRect(ctx, ix, iy, tn, tn, 16);
-      ctx.clip();
-      drawCover(ctx, im, ix, iy, tn, tn);
-      ctx.restore();
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = "#fff";
-      roundRect(ctx, ix, iy, tn, tn, 16);
-      ctx.stroke();
-      ix += tn + gap;
+      const im = await loadImg(it.url);
+      drawPhoto(ctx, im, tileX, iy, tile, tile, 18);
+      ctx.font = '600 22px system-ui, sans-serif';
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.fillText(it.label, tileX + tile / 2, iy + tile + 34);
+      iy += step;
     }
   }
 
   // 底部提示
-  ctx.font = "22px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.font = '22px system-ui, sans-serif';
   ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.fillText("🎬 视频生成中，请稍候…", W / 2, H - 28);
+  ctx.fillText("🎬 真实换装视频生成中，请稍候…", W / 2, H - 32);
 
-  return canvas.toDataURL("image/jpeg", 0.9);
+  return canvas.toDataURL("image/jpeg", 0.92);
 }

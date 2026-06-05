@@ -6,6 +6,7 @@ import {
   Input,
   Pagination,
   Result,
+  Segmented,
   Space,
   Spin,
   Steps,
@@ -71,8 +72,14 @@ export default function App() {
   const [customPrompt, setCustomPrompt] = useState("");
   const [task, setTask] = useState<TaskState | null>(null);
   const [collageUrl, setCollageUrl] = useState<string | null>(null);
+  const [resultView, setResultView] = useState<"image" | "video">("image");
   const [submitting, setSubmitting] = useState(false);
   const timer = useRef<number | null>(null);
+
+  // 视频生成完成后自动切到视频视图（图片仍可手动切回）
+  useEffect(() => {
+    if (task?.status === "succeeded") setResultView("video");
+  }, [task?.status]);
 
   useEffect(() => {
     if (!task || task.status === "succeeded" || task.status === "failed") return;
@@ -132,13 +139,17 @@ export default function App() {
     try {
       // 先用 Canvas 秒出搭配预览卡，作为视频生成期间的缓冲
       try {
+        const items = [
+          selectedAsset("clothing") && { url: selectedAsset("clothing")!.url, label: "衣服" },
+          selectedAsset("accessory") && { url: selectedAsset("accessory")!.url, label: "配饰" },
+        ].filter(Boolean) as { url: string; label: string }[];
         const collage = await buildCollage({
           person: selectedAsset("person")?.url,
           scene: selectedAsset("scene")?.url,
-          clothing: selectedAsset("clothing")?.url,
-          accessory: selectedAsset("accessory")?.url,
+          items,
         });
         setCollageUrl(collage);
+        setResultView("image");
       } catch {
         setCollageUrl(null);
       }
@@ -381,18 +392,35 @@ export default function App() {
                   )}
                   {task.status === "succeeded" && task.video_url && (
                     <div className="video-wrap">
-                      <video
-                        src={task.video_url}
-                        controls
-                        autoPlay
-                        loop
-                        playsInline
-                        className="result-video"
+                      <Segmented
+                        value={resultView}
+                        onChange={(v) => setResultView(v as "image" | "video")}
+                        options={[
+                          { label: "🖼️ 搭配图片", value: "image" },
+                          { label: "🎬 视频", value: "video" },
+                        ]}
+                        style={{ marginBottom: 16 }}
                       />
+                      <div>
+                        {resultView === "image" && collageUrl && (
+                          <img src={collageUrl} alt="搭配图片" className="result-video" />
+                        )}
+                        {resultView === "video" && (
+                          <video
+                            src={task.video_url}
+                            controls
+                            autoPlay
+                            loop
+                            playsInline
+                            className="result-video"
+                          />
+                        )}
+                      </div>
                       <Paragraph type="secondary" style={{ marginTop: 12 }}>
                         <Text type="warning">提示：</Text>
-                        当前若为 Mock 模式，这里是占位测试视频；切换到 volcengine
-                        模式后即为 Seedance 2.0 生成的真实换装视频。
+                        「搭配图片」目前是代码拼接的造型卡（人物与单品分开展示）；
+                        真实「人物穿上衣服」的融合图需接入图片换装模型。视频在
+                        volcengine 模式下为 Seedance 2.0 真实生成。
                       </Paragraph>
                     </div>
                   )}
