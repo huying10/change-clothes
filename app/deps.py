@@ -26,3 +26,9 @@ def get_task_manager() -> TaskManager:
 @lru_cache
 def get_video_provider() -> VideoGenProvider:
     return get_provider(get_settings())
+
+
+@lru_cache
+def get_image_provider():
+    from app.providers.factory import get_image_provider as _f
+    return _f(get_settings())

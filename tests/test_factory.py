@@ -15,3 +15,10 @@ def test_factory_rejects_unknown():
     settings = Settings(provider="nope")
     with pytest.raises(ValueError):
         get_provider(settings)
+
+
+def test_factory_returns_mock_image_provider():
+    from app.providers.factory import get_image_provider
+    from app.providers.mock import MockImageProvider
+    settings = Settings(provider="mock")
+    assert isinstance(get_image_provider(settings), MockImageProvider)
