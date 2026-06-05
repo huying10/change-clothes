@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from app.providers.base import (
     GenOptions,
+    ImageGenProvider,
     TaskResult,
     TaskStatus,
     VideoGenProvider,
@@ -34,3 +35,13 @@ class MockProvider(VideoGenProvider):
         if time.monotonic() - started < self._delay:
             return TaskResult(TaskStatus.RUNNING)
         return TaskResult(TaskStatus.SUCCEEDED, video_url=self._placeholder)
+
+
+class MockImageProvider(ImageGenProvider):
+    """零成本占位：返回占位图片的字节。"""
+
+    def __init__(self, placeholder_path) -> None:
+        self._path = Path(placeholder_path)
+
+    def generate(self, reference_images, prompt, options: GenOptions) -> bytes:
+        return self._path.read_bytes()
