@@ -7,5 +7,6 @@ uploads/
 outputs/
 frontend/node_modules/
 frontend/dist/
+frontend/*.tsbuildinfo
 .pytest_cache/
 .idea/
