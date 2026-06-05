@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     gen_resolution: str = "480p"
     gen_aspect_ratio: str = "9:16"
-    gen_duration: int = 10
+    gen_duration: int = 8
     gen_mode: str = "fast"
 
     uploads_dir: Path = PROJECT_ROOT / "uploads"
