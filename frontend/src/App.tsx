@@ -24,7 +24,7 @@ import {
   VideoCameraOutlined,
 } from "@ant-design/icons";
 import zhCN from "antd/locale/zh_CN";
-import { fetchTask, submitGenerate, type TaskState } from "./api";
+import { fetchTask, submitGenerate, submitGenerateImage, type TaskState } from "./api";
 import { buildCollage } from "./collage";
 
 const { Title, Paragraph, Text } = Typography;
@@ -72,6 +72,8 @@ export default function App() {
   const [customPrompt, setCustomPrompt] = useState("");
   const [task, setTask] = useState<TaskState | null>(null);
   const [collageUrl, setCollageUrl] = useState<string | null>(null);
+  const [realImageUrl, setRealImageUrl] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
   const [resultView, setResultView] = useState<"image" | "video">("image");
   const [submitting, setSubmitting] = useState(false);
   const timer = useRef<number | null>(null);
@@ -136,8 +138,10 @@ export default function App() {
       return;
     }
     setSubmitting(true);
+    setRealImageUrl(null);
+    setResultView("image");
     try {
-      // 先用 Canvas 秒出搭配预览卡，作为视频生成期间的缓冲
+      // ① 先用 Canvas 秒出搭配预览卡，作为缓冲
       try {
         const items = [
           selectedAsset("clothing") && { url: selectedAsset("clothing")!.url, label: "衣服" },
@@ -149,7 +153,6 @@ export default function App() {
           items,
         });
         setCollageUrl(collage);
-        setResultView("image");
       } catch {
         setCollageUrl(null);
       }
@@ -160,6 +163,15 @@ export default function App() {
         if (asset) form.append(cat.backendField, asset.file);
       }
       if (customPrompt.trim()) form.append("custom_prompt", customPrompt.trim());
+
+      // ② 并行：图片换装（同步、较快）+ 视频（异步、较慢）
+      setImageLoading(true);
+      submitGenerateImage(form)
+        .then((url) => setRealImageUrl(url))
+        .catch((e) => message.error(`换装图：${e}`))
+        .finally(() => setImageLoading(false));
+
+      // ③ 视频任务
       const id = await submitGenerate(form);
       setTask({ id, status: "pending", video_url: null, error: null });
       message.success("已提交，开始生成");
@@ -170,7 +182,7 @@ export default function App() {
     }
   }
 
-  const isGenerating = task && (task.status === "pending" || task.status === "running");
+  const videoReady = task?.status === "succeeded" && !!task.video_url;
 
   // 渲染某一类的素材库（上传 + 翻页画廊）
   function renderGallery(cat: Category) {
@@ -374,54 +386,64 @@ export default function App() {
                     </span>
                   }
                 >
-                  {isGenerating && (
-                    <div className="generating">
-                      {collageUrl && (
-                        <img src={collageUrl} alt="搭配预览" className="collage-preview" />
-                      )}
-                      <div className="generating-tip">
-                        <Spin />
-                        <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
-                          已先生成「搭配预览卡」，真实换装视频生成中，每 3 秒自动刷新…
-                        </Paragraph>
-                      </div>
-                    </div>
-                  )}
-                  {task.status === "failed" && (
-                    <Result status="error" title="生成失败" subTitle={task.error || "请稍后重试"} />
-                  )}
-                  {task.status === "succeeded" && task.video_url && (
+                  {task.status === "failed" ? (
+                    <Result status="error" title="视频生成失败" subTitle={task.error || "请稍后重试"} />
+                  ) : (
                     <div className="video-wrap">
                       <Segmented
                         value={resultView}
                         onChange={(v) => setResultView(v as "image" | "video")}
                         options={[
-                          { label: "🖼️ 搭配图片", value: "image" },
-                          { label: "🎬 视频", value: "video" },
+                          { label: "🖼️ 换装图片", value: "image" },
+                          { label: "🎬 视频", value: "video", disabled: !videoReady },
                         ]}
                         style={{ marginBottom: 16 }}
                       />
-                      <div>
-                        {resultView === "image" && collageUrl && (
-                          <img src={collageUrl} alt="搭配图片" className="result-video" />
-                        )}
-                        {resultView === "video" && (
-                          <video
-                            src={task.video_url}
-                            controls
-                            autoPlay
-                            loop
-                            playsInline
-                            className="result-video"
-                          />
-                        )}
-                      </div>
-                      <Paragraph type="secondary" style={{ marginTop: 12 }}>
-                        <Text type="warning">提示：</Text>
-                        「搭配图片」目前是代码拼接的造型卡（人物与单品分开展示）；
-                        真实「人物穿上衣服」的融合图需接入图片换装模型。视频在
-                        volcengine 模式下为 Seedance 2.0 真实生成。
-                      </Paragraph>
+
+                      {resultView === "image" && (
+                        <div>
+                          {realImageUrl || collageUrl ? (
+                            <img
+                              src={(realImageUrl || collageUrl)!}
+                              alt="换装图片"
+                              className="result-video"
+                            />
+                          ) : (
+                            <Spin />
+                          )}
+                          <Paragraph type="secondary" style={{ marginTop: 12 }}>
+                            {realImageUrl ? (
+                              <Text type="success">✅ 真实换装图（Seedream 生成）</Text>
+                            ) : imageLoading ? (
+                              <>正在生成真实换装图…当前先展示「搭配预览卡」（代码拼接，人物与单品分开）</>
+                            ) : (
+                              <>搭配预览卡（代码拼接）</>
+                            )}
+                          </Paragraph>
+                        </div>
+                      )}
+
+                      {resultView === "video" && (
+                        <div>
+                          {videoReady ? (
+                            <video
+                              src={task.video_url!}
+                              controls
+                              autoPlay
+                              loop
+                              playsInline
+                              className="result-video"
+                            />
+                          ) : (
+                            <div className="generating-tip">
+                              <Spin />
+                              <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
+                                视频生成中，每 3 秒自动刷新…
+                              </Paragraph>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </Card>
