@@ -41,3 +41,16 @@ class VideoGenProvider(ABC):
     @abstractmethod
     def poll(self, external_task_id: str) -> TaskResult:
         """查询外部任务状态/结果。"""
+
+
+class ImageGenProvider(ABC):
+    """图片换装生成接口（同步返回图片字节）。"""
+
+    @abstractmethod
+    def generate(
+        self,
+        reference_images: list[Path],
+        prompt: str,
+        options: GenOptions,
+    ) -> bytes:
+        """同步生成换装图片，返回图片字节；失败抛异常。"""
