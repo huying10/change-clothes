@@ -3,6 +3,7 @@ import {
   Button,
   Card,
   ConfigProvider,
+  Pagination,
   Result,
   Spin,
   Tag,
@@ -28,14 +29,13 @@ interface Category {
   icon: string;
   backendField: string;
   required?: boolean;
-  step: number;
 }
 
 const CATEGORIES: Category[] = [
-  { key: "person", label: "人物", icon: "🧍", backendField: "person", required: true, step: 1 },
-  { key: "clothing", label: "衣服", icon: "👗", backendField: "top", step: 2 },
-  { key: "accessory", label: "配饰", icon: "👜", backendField: "accessory", step: 2 },
-  { key: "scene", label: "场景", icon: "🏙️", backendField: "scene", required: true, step: 3 },
+  { key: "person", label: "人物", icon: "🧍", backendField: "person", required: true },
+  { key: "clothing", label: "衣服", icon: "👗", backendField: "top" },
+  { key: "accessory", label: "配饰", icon: "👜", backendField: "accessory" },
+  { key: "scene", label: "场景", icon: "🏙️", backendField: "scene", required: true },
 ];
 
 interface Asset {
@@ -43,6 +43,8 @@ interface Asset {
   url: string;
   file: File;
 }
+
+const PAGE_SIZE = 4; // 每页展示的缩略图数量（不含上传瓦片）
 
 const STATUS_META: Record<TaskState["status"], { color: string; text: string }> = {
   pending: { color: "default", text: "排队中" },
@@ -54,10 +56,9 @@ const STATUS_META: Record<TaskState["status"], { color: string; text: string }> 
 let assetSeq = 0;
 
 export default function App() {
-  // 各分类的素材库
   const [library, setLibrary] = useState<Record<string, Asset[]>>({});
-  // 各分类当前选中的素材 id
   const [selection, setSelection] = useState<Record<string, string | null>>({});
+  const [page, setPage] = useState<Record<string, number>>({});
   const [customPrompt, setCustomPrompt] = useState("");
   const [task, setTask] = useState<TaskState | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -78,13 +79,13 @@ export default function App() {
   }, [task?.id, task?.status]);
 
   function addAsset(catKey: string, file: File) {
-    const asset: Asset = {
-      id: `a${assetSeq++}`,
-      url: URL.createObjectURL(file),
-      file,
-    };
-    setLibrary((prev) => ({ ...prev, [catKey]: [...(prev[catKey] || []), asset] }));
-    // 首次上传自动选中
+    const asset: Asset = { id: `a${assetSeq++}`, url: URL.createObjectURL(file), file };
+    setLibrary((prev) => {
+      const list = [...(prev[catKey] || []), asset];
+      // 跳到新素材所在的最后一页
+      setPage((p) => ({ ...p, [catKey]: Math.ceil(list.length / PAGE_SIZE) }));
+      return { ...prev, [catKey]: list };
+    });
     setSelection((prev) => (prev[catKey] ? prev : { ...prev, [catKey]: asset.id }));
   }
 
@@ -95,9 +96,7 @@ export default function App() {
       if (target) URL.revokeObjectURL(target.url);
       return { ...prev, [catKey]: list.filter((a) => a.id !== assetId) };
     });
-    setSelection((prev) =>
-      prev[catKey] === assetId ? { ...prev, [catKey]: null } : prev
-    );
+    setSelection((prev) => (prev[catKey] === assetId ? { ...prev, [catKey]: null } : prev));
   }
 
   function selectedAsset(catKey: string): Asset | undefined {
@@ -129,8 +128,7 @@ export default function App() {
     }
   }
 
-  const isGenerating =
-    task && (task.status === "pending" || task.status === "running");
+  const isGenerating = task && (task.status === "pending" || task.status === "running");
 
   return (
     <ConfigProvider
@@ -172,9 +170,13 @@ export default function App() {
             </div>
           </Card>
 
-          {/* 各分类素材库 */}
+          {/* 各分类素材库（横向翻页） */}
           {CATEGORIES.map((cat) => {
             const list = library[cat.key] || [];
+            const pageCount = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+            const current = Math.min(page[cat.key] || 1, pageCount);
+            const start = (current - 1) * PAGE_SIZE;
+            const pageItems = list.slice(start, start + PAGE_SIZE);
             return (
               <Card
                 key={cat.key}
@@ -185,14 +187,29 @@ export default function App() {
                     {cat.required && <span className="req">*</span>}
                     {list.length > 0 && (
                       <Text type="secondary" style={{ fontWeight: 400, marginLeft: 8 }}>
-                        已上传 {list.length} 张，点选其一
+                        共 {list.length} 张，点选其一
                       </Text>
                     )}
                   </span>
                 }
               >
-                <div className="gallery">
-                  {list.map((asset) => {
+                <div className="gallery-row">
+                  <Upload
+                    multiple
+                    accept="image/*"
+                    showUploadList={false}
+                    beforeUpload={(file) => {
+                      addAsset(cat.key, file);
+                      return false;
+                    }}
+                  >
+                    <div className="add-tile">
+                      <PlusOutlined />
+                      <span>上传</span>
+                    </div>
+                  </Upload>
+
+                  {pageItems.map((asset) => {
                     const active = selection[cat.key] === asset.id;
                     return (
                       <div
@@ -222,21 +239,23 @@ export default function App() {
                     );
                   })}
 
-                  <Upload
-                    multiple
-                    accept="image/*"
-                    showUploadList={false}
-                    beforeUpload={(file) => {
-                      addAsset(cat.key, file);
-                      return false;
-                    }}
-                  >
-                    <div className="add-tile">
-                      <PlusOutlined />
-                      <span>上传</span>
-                    </div>
-                  </Upload>
+                  {list.length === 0 && (
+                    <div className="gallery-empty">还没有素材，点左侧「上传」添加</div>
+                  )}
                 </div>
+
+                {pageCount > 1 && (
+                  <div className="gallery-pager">
+                    <Pagination
+                      simple
+                      size="small"
+                      current={current}
+                      pageSize={PAGE_SIZE}
+                      total={list.length}
+                      onChange={(p) => setPage((prev) => ({ ...prev, [cat.key]: p }))}
+                    />
+                  </div>
+                )}
               </Card>
             );
           })}
