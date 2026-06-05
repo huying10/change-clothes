@@ -200,6 +200,12 @@ body {
   color: #7c3aed;
 }
 
+/* 步进导航 */
+.step-nav {
+  display: flex;
+  justify-content: space-between;
+}
+
 /* 提交按钮 */
 .submit-btn {
   height: 52px;
