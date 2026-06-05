@@ -64,21 +64,25 @@ async def generate(
         path = storage.save_upload(task.id, field, upload.filename or f"{field}.jpg", await upload.read())
         outfit_paths.append(path)
 
-    # ① Seedream 合成换装图
+    # ① Seedream 合成换装定妆照：人物(换装) + 服饰 + 场景 → 人站在场景里的全身定妆照
     image_url = None
     tryon_path = None
     try:
-        image_prompt = build_image_prompt(list(present_outfit.keys()), custom=custom_prompt)
-        tryon_bytes = image_provider.generate([person_path, *outfit_paths], image_prompt, options)
+        image_prompt = build_image_prompt(
+            list(present_outfit.keys()), with_scene=True, custom=custom_prompt
+        )
+        tryon_bytes = image_provider.generate(
+            [person_path, *outfit_paths, scene_path], image_prompt, options
+        )
         tryon_path = storage.save_output_image(task.id, tryon_bytes)
         image_url = storage.output_public_url(tryon_path)
     except Exception:  # noqa: BLE001 - 图片失败则回退原始人物图
         tryon_path = None
 
-    # ② Seedance 仅 2 张参考图：[换装图(或原始人物), 场景]
-    person_ref = tryon_path or person_path
-    video_refs = [person_ref, scene_path]
-    video_prompt = build_video_prompt(custom=custom_prompt)  # 人物已换装，仅需在场景中行走
+    # ② Seedance 单图首帧(i2v)：定妆照(人物已在场景中) → 转身+走动
+    first_frame = tryon_path or person_path
+    video_refs = [first_frame]
+    video_prompt = build_video_prompt(custom=custom_prompt)
 
     try:
         external_id = video_provider.submit(video_refs, video_prompt, options)

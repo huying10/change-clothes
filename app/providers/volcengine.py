@@ -38,16 +38,16 @@ class VolcengineProvider(VideoGenProvider):
         self._client = httpx.Client(timeout=60)
 
     def submit(self, reference_images, prompt: str, options: GenOptions) -> str:
+        # 图生视频(i2v)：用换装定妆照当首帧。文本参数对齐官方 i2v 示例。
         text = (
-            f"{prompt} --resolution {options.resolution} "
-            f"--ratio {options.aspect_ratio} --duration {options.duration}"
+            f"{prompt} --duration {options.duration} "
+            "--camerafixed false --watermark false"
         )
         content = [{"type": "text", "text": text}]
         for img in reference_images:
             content.append({
                 "type": "image_url",
                 "image_url": {"url": _to_data_url(Path(img))},
-                "role": "reference_image",
             })
         resp = self._client.post(
             f"{self._base}/contents/generations/tasks",
