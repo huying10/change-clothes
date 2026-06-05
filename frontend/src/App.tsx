@@ -25,7 +25,7 @@ import {
   VideoCameraOutlined,
 } from "@ant-design/icons";
 import zhCN from "antd/locale/zh_CN";
-import { fetchTask, submitGenerate, submitGenerateImage, type TaskState } from "./api";
+import { fetchTask, submitGenerate, type TaskState } from "./api";
 import { buildCollage } from "./collage";
 
 const { Title, Paragraph, Text } = Typography;
@@ -169,16 +169,13 @@ export default function App() {
       }
       if (customPrompt.trim()) form.append("custom_prompt", customPrompt.trim());
 
-      // ② 并行：图片换装（快）+ 视频（慢）
+      // 后端编排：先 Seedream 合成换装图，再用 [换装图, 场景] 提交 Seedance 视频
       setImageLoading(true);
-      submitGenerateImage(form)
-        .then((url) => setRealImageUrl(url))
-        .catch((e) => message.error(`换装图：${e}`))
-        .finally(() => setImageLoading(false));
-
-      const id = await submitGenerate(form);
-      setTask({ id, status: "pending", video_url: null, error: null });
-      message.success("已提交，开始生成");
+      const { taskId, imageUrl } = await submitGenerate(form);
+      if (imageUrl) setRealImageUrl(imageUrl);
+      setImageLoading(false);
+      setTask({ id: taskId, status: "pending", video_url: null, error: null });
+      message.success("换装图已生成，视频生成中…");
     } catch (e) {
       message.error(String(e));
     } finally {

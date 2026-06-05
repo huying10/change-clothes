@@ -19,17 +19,20 @@ def test_generate_requires_person_and_scene():
     assert resp.status_code == 422  # 缺必填字段
 
 
-def test_generate_returns_task_id():
+def test_generate_returns_task_id_and_image_url():
     client = _client()
     resp = client.post(
         "/api/generate",
         files={"person": _img("person.jpg"), "scene": _img("scene.jpg"), "top": _img("top.jpg")},
     )
     assert resp.status_code == 200
-    assert resp.json()["task_id"]
+    body = resp.json()
+    assert body["task_id"]
+    # mock 模式下 Seedream 合成图成功，返回换装图地址
+    assert body["image_url"].startswith("/outputs/")
 
 
-def test_generate_rejects_too_many_reference_images():
+def test_generate_accepts_full_outfit():
     client = _client()
     files = [
         ("person", _img("person.jpg")),
@@ -42,3 +45,4 @@ def test_generate_rejects_too_many_reference_images():
     ]
     resp = client.post("/api/generate", files=files)
     assert resp.status_code == 200
+    assert resp.json()["task_id"]

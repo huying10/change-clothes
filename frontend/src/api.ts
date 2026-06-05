@@ -5,14 +5,19 @@ export interface TaskState {
   error: string | null;
 }
 
-export async function submitGenerate(form: FormData): Promise<string> {
+export interface GenerateResult {
+  taskId: string;
+  imageUrl: string | null;
+}
+
+export async function submitGenerate(form: FormData): Promise<GenerateResult> {
   const resp = await fetch("/api/generate", { method: "POST", body: form });
   if (!resp.ok) {
     const detail = await resp.json().catch(() => ({}));
     throw new Error(detail.detail || `提交失败 (${resp.status})`);
   }
   const data = await resp.json();
-  return data.task_id as string;
+  return { taskId: data.task_id as string, imageUrl: (data.image_url as string) ?? null };
 }
 
 export async function submitGenerateImage(form: FormData): Promise<string> {
