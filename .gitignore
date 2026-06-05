@@ -10,3 +10,7 @@ frontend/dist/
 frontend/*.tsbuildinfo
 .pytest_cache/
 .idea/
+
+# 本地对话记录（不纳入版本库）
+对话记录.md
+scripts/export_conversation.py
