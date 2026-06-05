@@ -272,7 +272,7 @@ export default function App() {
       <div className="page">
         <header className="hero">
           <Title level={2} style={{ color: "#fff", margin: 0 }}>
-            👗 AI 虚拟换装视频
+            👗 AI 虚拟换装
           </Title>
           <Paragraph style={{ color: "rgba(255,255,255,0.85)", marginTop: 8 }}>
             按步骤上传并挑选素材，一步步搭配，最后生成换装图片与视频
@@ -336,15 +336,19 @@ export default function App() {
                 </Card>
               )}
 
-              <div className="step-nav">
-                <Button
-                  size="large"
-                  icon={<LeftOutlined />}
-                  disabled={current === 0}
-                  onClick={() => setCurrent((s) => Math.max(s - 1, 0))}
-                >
-                  上一步
-                </Button>
+              <div
+                className="step-nav"
+                style={{ justifyContent: current === 0 ? "flex-end" : "space-between" }}
+              >
+                {current > 0 && (
+                  <Button
+                    size="large"
+                    icon={<LeftOutlined />}
+                    onClick={() => setCurrent((s) => Math.max(s - 1, 0))}
+                  >
+                    上一步
+                  </Button>
+                )}
                 <Button type="primary" size="large" onClick={goNext}>
                   下一步 <RightOutlined />
                 </Button>
