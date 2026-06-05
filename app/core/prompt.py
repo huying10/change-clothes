@@ -48,33 +48,32 @@ def build_video_prompt(custom: str | None = None) -> str:
 
 _CN_NUM = {1: "一", 2: "两", 3: "三", 4: "四", 5: "五"}
 
-# 各类对应的「未选中时」保留措辞用的统称
-_IDENTITY = "严格保持人物的面部五官、发型、肤色、体型胖瘦和性别与参考图完全一致"
-_TAIL = "保持与参考图相同的姿势、构图和取景。写实人像，服饰自然贴合身体，光线真实，高清。"
+_IMG_IDENTITY = "严格保持图1中人物的面部五官、发型、肤色、体型胖瘦和性别与原图完全一致"
+_IMG_TAIL = "保持与图1相同的姿势、构图和取景。写实人像，服饰自然贴合身体，光线真实，高清。"
 
 
 def build_image_prompt(present_fields: list[str], custom: str | None = None) -> str:
-    """换装静图提示词：让人物换上所选服饰，严格锁定人物身份、姿势与取景。
+    """换装静图提示词（位置指代）：图1=人物，图2 起依次为各服饰。
 
-    - 只选 1 件：强调除该件外其余穿着全部保持不变
+    参考图发送顺序固定为 [人物, *服饰]，因此用「图1/图2…」明确指代，
+    告诉 Seedream 哪张是人、哪几张是要换的衣服。
+    - 只选 1 件：强调除该件外其余穿着保持不变
     - 选 ≥2 件：强调仅更换这几件服饰
     """
-    items = [ITEM_LABELS[f] for f in present_fields if f in ITEM_LABELS]
+    labels = [ITEM_LABELS[f] for f in present_fields if f in ITEM_LABELS]
 
-    if not items:
-        prompt = f"保持参考图中的人物外貌与服饰不变。{_IDENTITY}。{_TAIL}"
-    elif len(items) == 1:
-        prompt = (
-            f"让参考图中的人物换上所提供的{items[0]}。{_IDENTITY}。"
-            f"除{items[0]}外，参考图中原有的其他穿着全部保持不变。{_TAIL}"
-        )
+    if not labels:
+        prompt = f"图1为人物。保持图1中人物的外貌与服饰不变。{_IMG_IDENTITY}。{_IMG_TAIL}"
     else:
-        joined = "、".join(items)
-        n = _CN_NUM.get(len(items), str(len(items)))
-        prompt = (
-            f"让参考图中的人物换上所提供的{joined}。{_IDENTITY}，"
-            f"仅更换上述{n}件服饰。{_TAIL}"
-        )
+        mapping = "、".join(f"图{i + 2}为{lab}" for i, lab in enumerate(labels))
+        wear = "、".join(f"图{i + 2}的{lab}" for i, lab in enumerate(labels))
+        prefix = f"图1为人物，{mapping}。让图1中的人物换上{wear}。"
+        if len(labels) == 1:
+            middle = f"{_IMG_IDENTITY}。除{labels[0]}外，图1中人物原有的其他穿着全部保持不变。"
+        else:
+            n = _CN_NUM.get(len(labels), str(len(labels)))
+            middle = f"{_IMG_IDENTITY}，仅更换上述{n}件服饰。"
+        prompt = prefix + middle + _IMG_TAIL
 
     if custom:
         prompt += f" {custom.strip()}"

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
     seedance_model: str = ""
     seedream_model: str = ""
-    image_size: str = "2048x2048"
+    image_size: str = "2K"
 
     mock_delay_seconds: float = 3.0
 
