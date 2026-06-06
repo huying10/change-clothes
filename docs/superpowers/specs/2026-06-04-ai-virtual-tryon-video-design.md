@@ -109,11 +109,15 @@
 - **前后端**：**同一项目（不分离仓库）**，FastAPI 同时提供 API 与托管前端静态页
 - **异步任务**：Demo 用 FastAPI BackgroundTasks + 内存任务表；预留切 Celery/Redis
 - **存储**：本地文件系统（`uploads/`、`outputs/`）；预留切换火山 TOS 对象存储
-- **AI 调用**：火山引擎方舟 REST API —— Seedream（`/images/generations`，同步出定妆照）
-  + Seedance 2.0（`/contents/generations/tasks`，异步**图生视频 i2v**，单图首帧、无 role）。
-  本地图以 **base64 data URL** 传入 `image`（实测火山接受，无需先传 TOS）
+- **AI 调用**：火山引擎方舟 REST API —— Seedream（`/images/generations`，同步出定妆照，
+  `size=2K`、`stream=false`、`watermark=false`）+ Seedance 2.0（`/contents/generations/tasks`，
+  异步**图生视频 i2v**，单图首帧、无 role）。本地图以 **base64 data URL** 传入 `image`
+  （实测火山接受，无需先传 TOS）
+- **多模型对比**：`SEEDREAM_MODELS`（JSON）可配多个 Seedream 接入点（4.0/4.5/5.0），
+  一次请求并行各出一张，前端分 tab 对比；`ENABLE_VIDEO` 开关可暂停视频、只出图调效果省钱
 - **前端**：antd 组件库；步进器向导（人物→服饰搭配→场景→生成），每类素材库可多上传+翻页选择；
-  Canvas 即时拼"搭配预览卡"做缓冲；结果区「图片/视频」切换
+  Canvas 实时拼"搭配预览卡"做缓冲；结果区多 tab（搭配卡 / 各模型换装图 / 视频）切换、
+  图片点击全屏、视频 tab 常驻入口
 
 ---
 
@@ -197,9 +201,9 @@ change-clothes/
 │   ├── core/
 │   │   ├── task_manager.py   # 视频任务表(内存版,预留Celery)
 │   │   ├── storage.py        # 存储抽象(本地,预留TOS;存视频与图片)
-│   │   └── prompt.py         # build_prompt(视频) + build_image_prompt(换装)
-│   ├── deps.py               # 依赖装配(settings/storage/两个provider)
-│   └── config.py             # 配置(ARK_API_KEY/SEEDANCE_MODEL/SEEDREAM_MODEL)
+│   │   └── prompt.py         # build_video_prompt + build_image_prompt(位置指代/全身/锁脸)
+│   ├── deps.py               # 依赖装配(settings/storage/providers/多图provider)
+│   └── config.py             # 配置(ARK_API_KEY/SEEDANCE_MODEL/SEEDREAM_MODEL(S)/ENABLE_VIDEO)
 ├── frontend/                 # React + Vite + antd
 │   └── src/                  # 步进器向导 + collage.ts(Canvas缓冲卡) + 图片/视频切换
 ├── uploads/                  # 用户上传图(gitignore)
@@ -242,12 +246,11 @@ class ImageGenProvider(ABC):          # Seedream 图片换装，同步
 ## 8. 错误处理
 
 - **上传校验**：人物、场景为必传（缺失返回 422）；服饰各类可选
-- **图片(Seedream)失败回退**：换装图生成失败时回退用原始人物图提交 Seedance，
-  保证视频仍能产出；前端图片视图回退展示 Canvas 搭配卡
-- **Seedance 调用失败**：超时、限流(429)、内容审核拒绝 → 捕获，任务标记 `failed`
-  并记录原因，前端展示友好提示
-- **任务超时**：生成超过设定时长视为超时，避免前端无限轮询
-- **日志**：所有外部 API 调用记录请求/响应，便于预研排查效果
+- **图片(Seedream)失败**：每个模型**自动重试 1 次**；最终失败则记日志、在响应 `image_errors`
+  里返回、前端弹提示（避免"白跑出无换装视频还不自知"）；视频回退用原始人物图当首帧
+- **多模型部分失败**：某模型失败不影响其他模型，成功的照常出图、分 tab 展示
+- **Seedance 调用失败**：捕获并记录、任务标记 `failed`、前端展示
+- **日志**：图片/视频外部调用失败均 `logger.warning/error`，便于排查（`uvicorn.error`）
 
 ---
 
@@ -306,11 +309,42 @@ class ImageGenProvider(ABC):          # Seedream 图片换装，同步
 ### 前置条件
 火山引擎方舟账号需**实名 + 预充值**后方可调用（已开通）。`.env` 配置
 `PROVIDER=volcengine` + `ARK_API_KEY` + `SEEDANCE_MODEL`（视频接入点）+
-`SEEDREAM_MODEL`（图片换装接入点）即可连真实接口验证。
+`SEEDREAM_MODEL`/`SEEDREAM_MODELS`（图片换装接入点，后者支持多模型对比）即可连真实接口验证；
+`ENABLE_VIDEO=false` 可暂停视频只出图。
 
 ---
 
-## 12. 非目标（YAGNI，本阶段不做）
+## 12. 实测发现与预研结论（2026-06-06）
+
+真实接口端到端跑通后的关键结论，供决策：
+
+### 链路与接入
+- ✅ **整条链路可行**：上传 → Seedream 换装定妆照 → Seedance i2v 视频，首次即跑通。
+- ✅ **base64 直传可用**：本地图以 base64 data URL 传 `image`，火山接受，**无需先上传 TOS**。
+- ✅ **图片同步、视频异步**：Seedream 数秒返图；Seedance 约 1–3 分钟出 8s 视频。
+- ⚠️ Seedream **偶发失败**（限流/瞬时），已用"重试 + 日志 + 前端提示"兜住。
+
+### 提示词设计（决定成败）
+- 换装图必须用**位置指代**（图1=人物、图2..=服饰、最后=场景），否则模型分不清谁是谁。
+- 必须**显式要求"全身从头到脚入镜"**，否则模型会裁成上半身。
+- 视频提示词**去掉"完整转身"**：转身是人脸漂移的最大元凶，改为"面朝镜头、缓步走动、小幅度"。
+
+### 效果与短板（核心结论）
+- ✅ 换装、场景融合、未选服饰保留、配饰还原 —— **质量好**。
+- ⚠️ **人脸 identity 是主要短板**：
+  - 图片侧：**Seedream 4.0 / 4.5 明显比 5.0 更像本人**；4.0 较稳（保留未选服饰、无水印），
+    4.5 偶有"丢未选下装、带水印"。建议默认用 4.0，并提供多模型 tab 对比。
+  - 视频侧：**i2v 在运动中人脸仍会漂移**，比静图明显。需后续手段（减小动作、或换脸回贴、
+    或 Seedream 角色一致性参数）进一步加强。
+- 结论：**"换装+出片"可用；"100% 保住本人脸"（尤其视频）仍需额外手段**，是下一步重点。
+
+### 成本（实测量级）
+- 一次完整生成 ≈ 图片 ¥0.5（每多一个对比模型 +¥0.5）+ 视频 ¥6。
+- 调图阶段可 `ENABLE_VIDEO=false` 只出图，单次 ¥0.5 量级，便宜快速地调提示词/选模型。
+
+---
+
+## 13. 非目标（YAGNI，本阶段不做）
 
 - 用户注册 / 登录 / 权限系统
 - 预设单品库、预设场景库
