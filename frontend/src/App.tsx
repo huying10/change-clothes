@@ -77,7 +77,7 @@ export default function App() {
   const [collageUrl, setCollageUrl] = useState<string | null>(null);
   const [realImageUrl, setRealImageUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
-  const [resultView, setResultView] = useState<"image" | "video">("image");
+  const [resultView, setResultView] = useState<"collage" | "image" | "video">("collage");
   const [submitting, setSubmitting] = useState(false);
   const timer = useRef<number | null>(null);
 
@@ -140,7 +140,7 @@ export default function App() {
     }
     setSubmitting(true);
     setRealImageUrl(null);
-    setResultView("image");
+    setResultView("collage");
     try {
       // ① Canvas 秒出搭配预览卡（缓冲）
       try {
@@ -168,7 +168,10 @@ export default function App() {
       // 后端编排：先 Seedream 合成换装图，再用 [换装图, 场景] 提交 Seedance 视频
       setImageLoading(true);
       const { taskId, imageUrl, imageError } = await submitGenerate(form);
-      if (imageUrl) setRealImageUrl(imageUrl);
+      if (imageUrl) {
+        setRealImageUrl(imageUrl);
+        setResultView("image"); // 换装图好了自动切到它（视频仍由用户手动切）
+      }
       setImageLoading(false);
       setTask({ id: taskId, status: "pending", video_url: null, error: null });
       if (imageError) {
@@ -429,30 +432,45 @@ export default function App() {
                     <div className="video-wrap">
                       <Segmented
                         value={resultView}
-                        onChange={(v) => setResultView(v as "image" | "video")}
+                        onChange={(v) => setResultView(v as "collage" | "image" | "video")}
                         options={[
-                          { label: "🖼️ 换装图片", value: "image" },
+                          { label: "🎨 搭配预览卡", value: "collage", disabled: !collageUrl },
+                          { label: "🖼️ 换装图片", value: "image", disabled: !realImageUrl },
                           { label: "🎬 视频", value: "video", disabled: !videoReady },
                         ]}
                         style={{ marginBottom: 16 }}
                       />
 
-                      {resultView === "image" && (
+                      {resultView === "collage" && (
                         <div>
-                          {realImageUrl || collageUrl ? (
-                            <img src={(realImageUrl || collageUrl)!} alt="换装图片" className="result-video" />
+                          {collageUrl ? (
+                            <img src={collageUrl} alt="搭配预览卡" className="result-video" />
                           ) : (
                             <Spin />
                           )}
                           <Paragraph type="secondary" style={{ marginTop: 12 }}>
-                            {realImageUrl ? (
-                              <Text type="success">✅ 真实换装图（Seedream 生成）</Text>
-                            ) : imageLoading ? (
-                              <>正在生成真实换装图…当前先展示「搭配预览卡」（代码拼接，人物与单品分开）</>
-                            ) : (
-                              <>搭配预览卡（代码拼接）</>
-                            )}
+                            搭配预览卡（前端 Canvas 拼接，人物与单品分开展示，非真实换装）
                           </Paragraph>
+                        </div>
+                      )}
+
+                      {resultView === "image" && (
+                        <div>
+                          {realImageUrl ? (
+                            <>
+                              <img src={realImageUrl} alt="换装图片" className="result-video" />
+                              <Paragraph type="secondary" style={{ marginTop: 12 }}>
+                                <Text type="success">✅ 真实换装定妆照（Seedream 生成）</Text>
+                              </Paragraph>
+                            </>
+                          ) : (
+                            <div className="generating-tip">
+                              <Spin />
+                              <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
+                                {imageLoading ? "换装图生成中…可先看「搭配预览卡」" : "本次未生成换装图"}
+                              </Paragraph>
+                            </div>
+                          )}
                         </div>
                       )}
 
