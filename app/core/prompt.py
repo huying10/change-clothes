@@ -82,7 +82,7 @@ def build_image_prompt(
         action = f"让图1中的人物换上{wear}"
     else:
         action = "保持图1中人物的服饰不变"
-    action += f"，并自然地站在图{scene_idx}的场景中。" if with_scene else "。"
+    action += f"，并把背景替换为图{scene_idx}的场景。" if with_scene else "。"
 
     if len(labels) == 1:
         middle = f"{_IMG_IDENTITY}。除{labels[0]}外，图1中人物原有的其他穿着全部保持不变。"
@@ -93,9 +93,11 @@ def build_image_prompt(
         middle = f"{_IMG_IDENTITY}。"
 
     if with_scene:
+        # 关键：最小改造，避免模型重画脸。就当同一张照片只换了衣服和背景。
         tail = (
-            "自然的全身站姿、面部清晰且正对镜头，写实人像，"
-            "人物与场景的光影、透视和色调自然融合，光线真实，高清。"
+            "必须完整保留图1人物的脸部、五官、表情、发型、头部角度、身体姿态与画面构图——"
+            "就像同一张照片只更换了服饰与背景，不要重新摆姿势、不要美化、不要改变脸型与五官比例。"
+            "写实人像，人物与新背景的光影、透视和色调自然融合，光线真实，高清。"
         )
     else:
         tail = _IMG_TAIL
