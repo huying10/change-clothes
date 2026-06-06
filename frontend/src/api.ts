@@ -6,9 +6,10 @@ export interface TaskState {
 }
 
 export interface GenerateResult {
-  taskId: string;
-  imageUrl: string | null;
-  imageError: string | null;
+  images: Record<string, string>; // 模型标签 -> 换装图 url
+  imageErrors: Record<string, string>; // 模型标签 -> 失败原因
+  taskId: string | null; // 视频任务（暂停视频时为 null）
+  videoEnabled: boolean;
 }
 
 export async function submitGenerate(form: FormData): Promise<GenerateResult> {
@@ -19,9 +20,10 @@ export async function submitGenerate(form: FormData): Promise<GenerateResult> {
   }
   const data = await resp.json();
   return {
-    taskId: data.task_id as string,
-    imageUrl: (data.image_url as string) ?? null,
-    imageError: (data.image_error as string) ?? null,
+    images: (data.images as Record<string, string>) ?? {},
+    imageErrors: (data.image_errors as Record<string, string>) ?? {},
+    taskId: (data.task_id as string) ?? null,
+    videoEnabled: Boolean(data.video_enabled),
   };
 }
 

@@ -19,7 +19,7 @@ def test_generate_requires_person_and_scene():
     assert resp.status_code == 422  # 缺必填字段
 
 
-def test_generate_returns_task_id_and_image_url():
+def test_generate_returns_images_and_task():
     client = _client()
     resp = client.post(
         "/api/generate",
@@ -27,9 +27,13 @@ def test_generate_returns_task_id_and_image_url():
     )
     assert resp.status_code == 200
     body = resp.json()
+    # mock 模式至少一个模型出图
+    assert body["images"]
+    first_url = next(iter(body["images"].values()))
+    assert first_url.startswith("/outputs/") and first_url.endswith(".jpg")
+    # 默认 enable_video=True，返回视频任务 id
     assert body["task_id"]
-    # mock 模式下 Seedream 合成图成功，返回换装图地址
-    assert body["image_url"].startswith("/outputs/")
+    assert body["video_enabled"] is True
 
 
 def test_generate_accepts_full_outfit():

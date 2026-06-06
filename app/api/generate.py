@@ -7,18 +7,13 @@ from app.core.prompt import build_image_prompt, build_video_prompt
 from app.core.storage import Storage
 from app.core.task_manager import TaskManager
 from app.deps import (
-    get_image_provider,
+    get_image_providers,
     get_settings,
     get_storage,
     get_task_manager,
     get_video_provider,
 )
-from app.providers.base import (
-    GenOptions,
-    ImageGenProvider,
-    TaskStatus,
-    VideoGenProvider,
-)
+from app.providers.base import GenOptions, TaskStatus, VideoGenProvider
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
@@ -41,12 +36,12 @@ async def generate(
     storage: Storage = Depends(get_storage),
     task_manager: TaskManager = Depends(get_task_manager),
     video_provider: VideoGenProvider = Depends(get_video_provider),
-    image_provider: ImageGenProvider = Depends(get_image_provider),
+    image_providers: dict = Depends(get_image_providers),
 ):
-    """编排两段生成：
-    ① Seedream 把「人物 + 所选服饰」合成一张换装图（人物已穿好整套）。
-    ② Seedance 仅用 [换装图, 场景图] 两张参考图生成视频，规避参考图数量限制。
-    若图片生成失败，则回退用原始人物图作为视频参考。
+    """编排：
+    ① 用配置的一个或多个 Seedream 模型，各自把「人物 + 服饰 + 场景」合成换装定妆照
+       （多模型时每个模型一张，前端分 tab 对比）。
+    ② 若 ENABLE_VIDEO，则用第一张成功的定妆照当首帧提交 Seedance 视频；否则暂停视频。
     """
     outfit = {"top": top, "bottom": bottom, "shoes": shoes,
               "jewelry": jewelry, "accessory": accessory}
@@ -68,40 +63,53 @@ async def generate(
         path = storage.save_upload(task.id, field, upload.filename or f"{field}.jpg", await upload.read())
         outfit_paths.append(path)
 
-    # ① Seedream 合成换装定妆照：人物(换装) + 服饰 + 场景 → 人站在场景里的全身定妆照
-    image_url = None
-    tryon_path = None
-    image_error = None
     image_prompt = build_image_prompt(
         list(present_outfit.keys()), with_scene=True, custom=custom_prompt
     )
     image_refs = [person_path, *outfit_paths, scene_path]
-    for attempt in range(1, IMAGE_RETRIES + 1):
+
+    # ① 各模型并行（顺序）生成换装定妆照
+    images: dict[str, str] = {}        # label -> 公网可访问的本地 url
+    image_errors: dict[str, str] = {}  # label -> 失败原因
+    first_frame_path = None            # 给视频用的首帧（第一张成功的定妆照）
+    for label, provider in image_providers.items():
+        key = "".join(c if c.isalnum() else "_" for c in label)
+        err = None
+        for attempt in range(1, IMAGE_RETRIES + 1):
+            try:
+                data = provider.generate(image_refs, image_prompt, options)
+                path = storage.save_output_image(task.id, data, label=key)
+                images[label] = storage.output_public_url(path)
+                if first_frame_path is None:
+                    first_frame_path = path
+                err = None
+                break
+            except Exception as exc:  # noqa: BLE001
+                err = str(exc)
+                logger.warning("[%s] 换装图生成失败(第 %d/%d 次): %s", label, attempt, IMAGE_RETRIES, exc)
+        if label not in images:
+            image_errors[label] = err
+            logger.error("[%s] 换装图最终失败: %s", label, err)
+
+    # ② 视频（可暂停）
+    task_id = None
+    if settings.enable_video:
+        first_frame = first_frame_path or person_path
+        video_prompt = build_video_prompt(custom=custom_prompt)
         try:
-            tryon_bytes = image_provider.generate(image_refs, image_prompt, options)
-            tryon_path = storage.save_output_image(task.id, tryon_bytes)
-            image_url = storage.output_public_url(tryon_path)
-            image_error = None
-            break
+            external_id = video_provider.submit([first_frame], video_prompt, options)
+            task_manager.update(
+                task.id, status=TaskStatus.RUNNING, external_id=external_id, prompt=video_prompt
+            )
+            task_id = task.id
         except Exception as exc:  # noqa: BLE001
-            image_error = str(exc)
-            logger.warning("Seedream 换装图生成失败(第 %d/%d 次): %s", attempt, IMAGE_RETRIES, exc)
-    if tryon_path is None:
-        logger.error("Seedream 最终失败，回退原始人物图当首帧；原因: %s", image_error)
+            logger.error("Seedance 提交视频任务失败: %s", exc)
+            task_manager.update(task.id, status=TaskStatus.FAILED, error=str(exc))
+            task_id = task.id
 
-    # ② Seedance 单图首帧(i2v)：定妆照(人物已在场景中) → 转身+走动
-    first_frame = tryon_path or person_path
-    video_refs = [first_frame]
-    video_prompt = build_video_prompt(custom=custom_prompt)
-
-    try:
-        external_id = video_provider.submit(video_refs, video_prompt, options)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Seedance 提交视频任务失败: %s", exc)
-        task_manager.update(task.id, status=TaskStatus.FAILED, error=str(exc))
-        return {"task_id": task.id, "image_url": image_url, "image_error": image_error}
-
-    task_manager.update(
-        task.id, status=TaskStatus.RUNNING, external_id=external_id, prompt=video_prompt
-    )
-    return {"task_id": task.id, "image_url": image_url, "image_error": image_error}
+    return {
+        "images": images,
+        "image_errors": image_errors,
+        "task_id": task_id,
+        "video_enabled": settings.enable_video,
+    }

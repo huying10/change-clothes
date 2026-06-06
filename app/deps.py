@@ -32,3 +32,9 @@ def get_video_provider() -> VideoGenProvider:
 def get_image_provider():
     from app.providers.factory import get_image_provider as _f
     return _f(get_settings())
+
+
+@lru_cache
+def get_image_providers() -> dict:
+    from app.providers.factory import build_image_providers
+    return build_image_providers(get_settings())

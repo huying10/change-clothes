@@ -75,9 +75,11 @@ export default function App() {
   const [customPrompt, setCustomPrompt] = useState("");
   const [task, setTask] = useState<TaskState | null>(null);
   const [collageUrl, setCollageUrl] = useState<string | null>(null);
-  const [realImageUrl, setRealImageUrl] = useState<string | null>(null);
+  const [images, setImages] = useState<Record<string, string>>({}); // 模型标签 -> 换装图 url
   const [imageLoading, setImageLoading] = useState(false);
-  const [resultView, setResultView] = useState<"collage" | "image" | "video">("collage");
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  // resultView: "collage" | 模型标签 | "video"
+  const [resultView, setResultView] = useState<string>("collage");
   const [submitting, setSubmitting] = useState(false);
   const timer = useRef<number | null>(null);
 
@@ -169,7 +171,8 @@ export default function App() {
       return;
     }
     setSubmitting(true);
-    setRealImageUrl(null);
+    setImages({});
+    setTask(null);
     setResultView("collage"); // 搭配预览卡此时已由实时 effect 生成
     try {
       const form = new FormData();
@@ -179,19 +182,25 @@ export default function App() {
       }
       if (customPrompt.trim()) form.append("custom_prompt", customPrompt.trim());
 
-      // 后端编排：先 Seedream 合成换装图，再用 [换装图, 场景] 提交 Seedance 视频
       setImageLoading(true);
-      const { taskId, imageUrl, imageError } = await submitGenerate(form);
-      if (imageUrl) {
-        setRealImageUrl(imageUrl);
-        setResultView("image"); // 换装图好了自动切到它（视频仍由用户手动切）
-      }
+      const { images: imgs, imageErrors, taskId, videoEnabled: ve } = await submitGenerate(form);
+      setImages(imgs);
+      setVideoEnabled(ve);
       setImageLoading(false);
-      setTask({ id: taskId, status: "pending", video_url: null, error: null });
-      if (imageError) {
-        message.warning("换装图生成失败，本次视频用了原图（未换装）。可重试", 6);
-      } else {
-        message.success("换装图已生成，视频生成中…");
+
+      const labels = Object.keys(imgs);
+      if (labels.length > 0) {
+        setResultView(labels[0]); // 自动切到第一个模型的换装图
+      }
+      const errLabels = Object.keys(imageErrors);
+      if (errLabels.length > 0) {
+        message.warning(`部分模型换装图失败：${errLabels.join("、")}`, 6);
+      } else if (labels.length > 0) {
+        message.success("换装图已生成");
+      }
+
+      if (ve && taskId) {
+        setTask({ id: taskId, status: "pending", video_url: null, error: null });
       }
     } catch (e) {
       message.error(String(e));
@@ -201,6 +210,7 @@ export default function App() {
   }
 
   const videoReady = task?.status === "succeeded" && !!task.video_url;
+  const imageLabels = Object.keys(images);
 
   // 渲染某一类的素材库（上传 + 翻页画廊）
   function renderGallery(cat: SubCat) {
@@ -448,11 +458,15 @@ export default function App() {
                     <div className="video-wrap">
                       <Segmented
                         value={resultView}
-                        onChange={(v) => setResultView(v as "collage" | "image" | "video")}
+                        onChange={(v) => setResultView(v as string)}
                         options={[
                           { label: "🎨 搭配预览卡", value: "collage", disabled: !collageUrl },
-                          { label: "🖼️ 换装图片", value: "image", disabled: !realImageUrl },
-                          { label: "🎬 视频", value: "video", disabled: !videoReady },
+                          ...(imageLabels.length > 0
+                            ? imageLabels.map((l) => ({ label: `🖼️ ${l}`, value: l }))
+                            : [{ label: "🖼️ 换装图片", value: "__img_ph", disabled: true }]),
+                          ...(videoEnabled
+                            ? [{ label: "🎬 视频", value: "video", disabled: !videoReady }]
+                            : []),
                         ]}
                         style={{ marginBottom: 16 }}
                       />
@@ -475,16 +489,19 @@ export default function App() {
                         </div>
                       )}
 
-                      {resultView === "image" && (
+                      {imageLabels.includes(resultView) && (
                         <div>
-                          {realImageUrl ? (
-                            <>
-                              <img src={realImageUrl} alt="换装图片" className="result-video" />
-                              <Paragraph type="secondary" style={{ marginTop: 12 }}>
-                                <Text type="success">✅ 真实换装定妆照（Seedream 生成）</Text>
-                              </Paragraph>
-                            </>
-                          ) : imageLoading ? (
+                          <img src={images[resultView]} alt={resultView} className="result-video" />
+                          <Paragraph type="secondary" style={{ marginTop: 12 }}>
+                            <Text type="success">✅ {resultView} 换装定妆照</Text>
+                            {imageLabels.length > 1 && "（切换上方标签对比不同模型）"}
+                          </Paragraph>
+                        </div>
+                      )}
+
+                      {resultView === "__img_ph" && (
+                        <div>
+                          {imageLoading ? (
                             <div className="generating-tip">
                               <Spin />
                               <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
@@ -494,9 +511,7 @@ export default function App() {
                           ) : (
                             <div className="result-placeholder">
                               <div className="ph-icon">🖼️</div>
-                              <Paragraph type="secondary">
-                                {task ? "本次未生成换装图（可重试）" : "点击「生成」后，这里展示 Seedream 换装定妆照"}
-                              </Paragraph>
+                              <Paragraph type="secondary">点击「生成」后，这里展示各模型换装定妆照</Paragraph>
                             </div>
                           )}
                         </div>
@@ -523,9 +538,7 @@ export default function App() {
                           ) : (
                             <div className="result-placeholder">
                               <div className="ph-icon">🎬</div>
-                              <Paragraph type="secondary">
-                                点击「生成」后，这里展示 Seedance 换装视频
-                              </Paragraph>
+                              <Paragraph type="secondary">点击「生成」后，这里展示 Seedance 换装视频</Paragraph>
                             </div>
                           )}
                         </div>

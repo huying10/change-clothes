@@ -12,8 +12,11 @@ class Settings(BaseSettings):
     ark_api_key: str = ""
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
     seedance_model: str = ""
-    seedream_model: str = ""
+    seedream_model: str = ""  # 单模型兼容保留
+    # 多模型对比：label -> 接入点ID（JSON）。非空时按此并行生成、每个一个 tab
+    seedream_models: dict[str, str] = {}
     image_size: str = "2K"
+    enable_video: bool = True  # 暂停视频时设为 False，仅出图对比
 
     mock_delay_seconds: float = 3.0
 
