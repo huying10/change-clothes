@@ -95,6 +95,36 @@ export default function App() {
     };
   }, [task?.id, task?.status]);
 
+  // 进入「生成」步骤即实时拼出搭配预览卡，让预览区一开始就有内容（不空白）
+  useEffect(() => {
+    if (current !== GENERATE_STEP) return;
+    const person = selectedAsset("person");
+    if (!person) {
+      setCollageUrl(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const items = OUTFIT.filter((c) => selectedAsset(c.key)).map((c) => ({
+        url: selectedAsset(c.key)!.url,
+        label: c.label,
+      }));
+      try {
+        const c = await buildCollage({
+          person: person.url,
+          scene: selectedAsset("scene")?.url,
+          items,
+        });
+        if (!cancelled) setCollageUrl(c);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [current, selection, library]);
+
   function addAsset(catKey: string, file: File) {
     const asset: Asset = { id: `a${assetSeq++}`, url: URL.createObjectURL(file), file };
     setLibrary((prev) => {
@@ -140,24 +170,8 @@ export default function App() {
     }
     setSubmitting(true);
     setRealImageUrl(null);
-    setResultView("collage");
+    setResultView("collage"); // 搭配预览卡此时已由实时 effect 生成
     try {
-      // ① Canvas 秒出搭配预览卡（缓冲）
-      try {
-        const items = OUTFIT.filter((c) => selectedAsset(c.key)).map((c) => ({
-          url: selectedAsset(c.key)!.url,
-          label: c.label,
-        }));
-        const collage = await buildCollage({
-          person: selectedAsset("person")?.url,
-          scene: selectedAsset("scene")?.url,
-          items,
-        });
-        setCollageUrl(collage);
-      } catch {
-        setCollageUrl(null);
-      }
-
       const form = new FormData();
       for (const cat of ALL_CATS) {
         const asset = selectedAsset(cat.key);
@@ -414,19 +428,21 @@ export default function App() {
                 </Space>
               </Card>
 
-              {task && (
+              {(
                 <Card
                   className="section-card result-card"
                   title={
                     <span className="section-title">
-                      生成结果{" "}
-                      <Tag color={STATUS_META[task.status].color}>
-                        {STATUS_META[task.status].text}
-                      </Tag>
+                      预览 / 生成结果{" "}
+                      {task && (
+                        <Tag color={STATUS_META[task.status].color}>
+                          {STATUS_META[task.status].text}
+                        </Tag>
+                      )}
                     </span>
                   }
                 >
-                  {task.status === "failed" ? (
+                  {task?.status === "failed" ? (
                     <Result status="error" title="视频生成失败" subTitle={task.error || "请稍后重试"} />
                   ) : (
                     <div className="video-wrap">
@@ -444,13 +460,18 @@ export default function App() {
                       {resultView === "collage" && (
                         <div>
                           {collageUrl ? (
-                            <img src={collageUrl} alt="搭配预览卡" className="result-video" />
+                            <>
+                              <img src={collageUrl} alt="搭配预览卡" className="result-video" />
+                              <Paragraph type="secondary" style={{ marginTop: 12 }}>
+                                搭配预览卡（前端 Canvas 实时拼接，人物与单品分开展示，非真实换装）
+                              </Paragraph>
+                            </>
                           ) : (
-                            <Spin />
+                            <div className="result-placeholder">
+                              <div className="ph-icon">🎨</div>
+                              <Paragraph type="secondary">选好「人物」后，这里实时拼出搭配预览</Paragraph>
+                            </div>
                           )}
-                          <Paragraph type="secondary" style={{ marginTop: 12 }}>
-                            搭配预览卡（前端 Canvas 拼接，人物与单品分开展示，非真实换装）
-                          </Paragraph>
                         </div>
                       )}
 
@@ -463,11 +484,18 @@ export default function App() {
                                 <Text type="success">✅ 真实换装定妆照（Seedream 生成）</Text>
                               </Paragraph>
                             </>
-                          ) : (
+                          ) : imageLoading ? (
                             <div className="generating-tip">
                               <Spin />
                               <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
-                                {imageLoading ? "换装图生成中…可先看「搭配预览卡」" : "本次未生成换装图"}
+                                换装图生成中…可先看「搭配预览卡」
+                              </Paragraph>
+                            </div>
+                          ) : (
+                            <div className="result-placeholder">
+                              <div className="ph-icon">🖼️</div>
+                              <Paragraph type="secondary">
+                                {task ? "本次未生成换装图（可重试）" : "点击「生成」后，这里展示 Seedream 换装定妆照"}
                               </Paragraph>
                             </div>
                           )}
@@ -478,18 +506,25 @@ export default function App() {
                         <div>
                           {videoReady ? (
                             <video
-                              src={task.video_url!}
+                              src={task!.video_url!}
                               controls
                               autoPlay
                               loop
                               playsInline
                               className="result-video"
                             />
-                          ) : (
+                          ) : task ? (
                             <div className="generating-tip">
                               <Spin />
                               <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
                                 视频生成中，每 3 秒自动刷新…
+                              </Paragraph>
+                            </div>
+                          ) : (
+                            <div className="result-placeholder">
+                              <div className="ph-icon">🎬</div>
+                              <Paragraph type="secondary">
+                                点击「生成」后，这里展示 Seedance 换装视频
                               </Paragraph>
                             </div>
                           )}

@@ -242,6 +242,27 @@ body {
   background: #000;
 }
 
+.result-placeholder {
+  max-width: 360px;
+  margin: 0 auto;
+  aspect-ratio: 3 / 4;
+  border: 2px dashed #d9d9d9;
+  border-radius: 12px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.result-placeholder .ph-icon {
+  font-size: 48px;
+  opacity: 0.4;
+}
+
 @media (max-width: 600px) {
   .asset-card,
   .add-tile {
