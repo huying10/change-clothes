@@ -3,6 +3,7 @@ import {
   Button,
   Card,
   ConfigProvider,
+  Image,
   Input,
   Pagination,
   Result,
@@ -77,7 +78,6 @@ export default function App() {
   const [collageUrl, setCollageUrl] = useState<string | null>(null);
   const [images, setImages] = useState<Record<string, string>>({}); // 模型标签 -> 换装图 url
   const [imageLoading, setImageLoading] = useState(false);
-  const [videoEnabled, setVideoEnabled] = useState(true);
   // resultView: "collage" | 模型标签 | "video"
   const [resultView, setResultView] = useState<string>("collage");
   const [submitting, setSubmitting] = useState(false);
@@ -183,9 +183,8 @@ export default function App() {
       if (customPrompt.trim()) form.append("custom_prompt", customPrompt.trim());
 
       setImageLoading(true);
-      const { images: imgs, imageErrors, taskId, videoEnabled: ve } = await submitGenerate(form);
+      const { images: imgs, imageErrors, taskId } = await submitGenerate(form);
       setImages(imgs);
-      setVideoEnabled(ve);
       setImageLoading(false);
 
       const labels = Object.keys(imgs);
@@ -199,7 +198,8 @@ export default function App() {
         message.success("换装图已生成");
       }
 
-      if (ve && taskId) {
+      if (taskId) {
+        // 后端仅在视频开启时返回 task_id
         setTask({ id: taskId, status: "pending", video_url: null, error: null });
       }
     } catch (e) {
@@ -464,9 +464,7 @@ export default function App() {
                           ...(imageLabels.length > 0
                             ? imageLabels.map((l) => ({ label: `🖼️ ${l}`, value: l }))
                             : [{ label: "🖼️ 换装图片", value: "__img_ph", disabled: true }]),
-                          ...(videoEnabled
-                            ? [{ label: "🎬 视频", value: "video", disabled: !videoReady }]
-                            : []),
+                          { label: "🎬 视频", value: "video", disabled: !videoReady },
                         ]}
                         style={{ marginBottom: 16 }}
                       />
@@ -475,9 +473,9 @@ export default function App() {
                         <div>
                           {collageUrl ? (
                             <>
-                              <img src={collageUrl} alt="搭配预览卡" className="result-video" />
+                              <Image src={collageUrl} alt="搭配预览卡" className="result-video" />
                               <Paragraph type="secondary" style={{ marginTop: 12 }}>
-                                搭配预览卡（前端 Canvas 实时拼接，人物与单品分开展示，非真实换装）
+                                搭配预览卡（前端 Canvas 实时拼接，非真实换装）· 点击图片可全屏查看
                               </Paragraph>
                             </>
                           ) : (
@@ -491,10 +489,10 @@ export default function App() {
 
                       {imageLabels.includes(resultView) && (
                         <div>
-                          <img src={images[resultView]} alt={resultView} className="result-video" />
+                          <Image src={images[resultView]} alt={resultView} className="result-video" />
                           <Paragraph type="secondary" style={{ marginTop: 12 }}>
                             <Text type="success">✅ {resultView} 换装定妆照</Text>
-                            {imageLabels.length > 1 && "（切换上方标签对比不同模型）"}
+                            {imageLabels.length > 1 ? "（切换上方标签对比不同模型）" : ""} · 点击图片可全屏查看
                           </Paragraph>
                         </div>
                       )}
