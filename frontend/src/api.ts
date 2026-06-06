@@ -8,6 +8,7 @@ export interface TaskState {
 export interface GenerateResult {
   taskId: string;
   imageUrl: string | null;
+  imageError: string | null;
 }
 
 export async function submitGenerate(form: FormData): Promise<GenerateResult> {
@@ -17,7 +18,11 @@ export async function submitGenerate(form: FormData): Promise<GenerateResult> {
     throw new Error(detail.detail || `提交失败 (${resp.status})`);
   }
   const data = await resp.json();
-  return { taskId: data.task_id as string, imageUrl: (data.image_url as string) ?? null };
+  return {
+    taskId: data.task_id as string,
+    imageUrl: (data.image_url as string) ?? null,
+    imageError: (data.image_error as string) ?? null,
+  };
 }
 
 export async function submitGenerateImage(form: FormData): Promise<string> {

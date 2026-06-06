@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.config import Settings
@@ -19,8 +21,10 @@ from app.providers.base import (
 )
 
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 OUTFIT_FIELDS = ["top", "bottom", "shoes", "jewelry", "accessory"]
+IMAGE_RETRIES = 2  # Seedream 偶发失败时的总尝试次数
 
 
 @router.post("/api/generate")
@@ -67,17 +71,23 @@ async def generate(
     # ① Seedream 合成换装定妆照：人物(换装) + 服饰 + 场景 → 人站在场景里的全身定妆照
     image_url = None
     tryon_path = None
-    try:
-        image_prompt = build_image_prompt(
-            list(present_outfit.keys()), with_scene=True, custom=custom_prompt
-        )
-        tryon_bytes = image_provider.generate(
-            [person_path, *outfit_paths, scene_path], image_prompt, options
-        )
-        tryon_path = storage.save_output_image(task.id, tryon_bytes)
-        image_url = storage.output_public_url(tryon_path)
-    except Exception:  # noqa: BLE001 - 图片失败则回退原始人物图
-        tryon_path = None
+    image_error = None
+    image_prompt = build_image_prompt(
+        list(present_outfit.keys()), with_scene=True, custom=custom_prompt
+    )
+    image_refs = [person_path, *outfit_paths, scene_path]
+    for attempt in range(1, IMAGE_RETRIES + 1):
+        try:
+            tryon_bytes = image_provider.generate(image_refs, image_prompt, options)
+            tryon_path = storage.save_output_image(task.id, tryon_bytes)
+            image_url = storage.output_public_url(tryon_path)
+            image_error = None
+            break
+        except Exception as exc:  # noqa: BLE001
+            image_error = str(exc)
+            logger.warning("Seedream 换装图生成失败(第 %d/%d 次): %s", attempt, IMAGE_RETRIES, exc)
+    if tryon_path is None:
+        logger.error("Seedream 最终失败，回退原始人物图当首帧；原因: %s", image_error)
 
     # ② Seedance 单图首帧(i2v)：定妆照(人物已在场景中) → 转身+走动
     first_frame = tryon_path or person_path
@@ -87,10 +97,11 @@ async def generate(
     try:
         external_id = video_provider.submit(video_refs, video_prompt, options)
     except Exception as exc:  # noqa: BLE001
+        logger.error("Seedance 提交视频任务失败: %s", exc)
         task_manager.update(task.id, status=TaskStatus.FAILED, error=str(exc))
-        return {"task_id": task.id, "image_url": image_url}
+        return {"task_id": task.id, "image_url": image_url, "image_error": image_error}
 
     task_manager.update(
         task.id, status=TaskStatus.RUNNING, external_id=external_id, prompt=video_prompt
     )
-    return {"task_id": task.id, "image_url": image_url}
+    return {"task_id": task.id, "image_url": image_url, "image_error": image_error}

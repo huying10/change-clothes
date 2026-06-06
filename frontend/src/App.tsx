@@ -167,11 +167,15 @@ export default function App() {
 
       // 后端编排：先 Seedream 合成换装图，再用 [换装图, 场景] 提交 Seedance 视频
       setImageLoading(true);
-      const { taskId, imageUrl } = await submitGenerate(form);
+      const { taskId, imageUrl, imageError } = await submitGenerate(form);
       if (imageUrl) setRealImageUrl(imageUrl);
       setImageLoading(false);
       setTask({ id: taskId, status: "pending", video_url: null, error: null });
-      message.success("换装图已生成，视频生成中…");
+      if (imageError) {
+        message.warning("换装图生成失败，本次视频用了原图（未换装）。可重试", 6);
+      } else {
+        message.success("换装图已生成，视频生成中…");
+      }
     } catch (e) {
       message.error(String(e));
     } finally {
